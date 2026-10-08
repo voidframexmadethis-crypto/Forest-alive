@@ -1,0 +1,6 @@
+{
+  "name": "Dark Force Alive: Ultra-Realistic 3D Horror Survival Shooter",
+  "description": "Survive against Skinwalkers, Double Tanks, 9-Tentacle Jockeys, Flying Phantoms, and Crying Witches in realistic 3D horror environments with drivable tanks, safehouse defenses, and Call of Duty-style weapon systems.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
