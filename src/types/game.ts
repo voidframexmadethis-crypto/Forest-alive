@@ -66,7 +66,8 @@ export type CreatureType =
   | 'blood_spider'
   | 'subterranean_snake'
   | 'winged_ice_skinwalker'
-  | 'stick_skinwalker_18ft';
+  | 'stick_skinwalker_18ft'
+  | 'nun';
 
 export type CreatureAIState = 
   | 'idle'
@@ -157,6 +158,7 @@ export interface PlayerStats {
   undergroundPullTimer?: number;
   spiderBloodDrainActive?: boolean;
   earScreamScareActive?: boolean;
+  blindTimer?: number;
   unlockedWeapons: string;
   isDebugActive?: boolean;
   directorState?: DirectorState;

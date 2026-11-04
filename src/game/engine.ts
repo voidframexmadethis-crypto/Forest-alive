@@ -23,6 +23,7 @@ import { BloodSpiderAI } from './ai/BloodSpiderAI';
 import { SubterraneanSnakeAI } from './ai/SubterraneanSnakeAI';
 import { WingedIceAI } from './ai/WingedIceAI';
 import { StickSkinwalkerAI } from './ai/StickSkinwalkerAI';
+import { NunAI } from './ai/NunAI';
 import { KatrinaCompanionAI } from './ai/KatrinaCompanionAI';
 import { networkClient } from './multiplayer/NetworkClient';
 import { RemotePlayerManager } from './multiplayer/RemotePlayerManager';
@@ -1198,7 +1199,8 @@ export class GameEngine {
       // Trickle remaining slowly over time
       setTimeout(() => this.spawnCreaturesOfType('double_tank', 1), 12000);
       setTimeout(() => this.spawnCreaturesOfType('crying_witch', 1), 24000);
-      setTimeout(() => this.spawnCreaturesOfType('blood_spider', 1), 36000);
+      setTimeout(() => this.spawnCreaturesOfType('nun', 1), 32000);
+      setTimeout(() => this.spawnCreaturesOfType('blood_spider', 1), 40000);
       setTimeout(() => this.spawnCreaturesOfType('winged_ice_skinwalker', 1), 48000);
     } else if (this.mode === 'death_toll') {
       this.spawnCreaturesOfType('zombie', 3);
@@ -1285,6 +1287,13 @@ export class GameEngine {
         creature.aiController = new WingedIceAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
       } else if (type === 'stick_skinwalker_18ft') {
         creature.aiController = new StickSkinwalkerAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'nun') {
+        creature.aiController = new NunAI(
+          creature,
+          this.playerPos,
+          () => this.performCreatureAttack(creature),
+          (msg) => this.callbacks.onGameEvent(msg)
+        );
       }
 
       this.creatures.push(creature);
@@ -1509,6 +1518,38 @@ export class GameEngine {
       eyeR.position.set(0.1, 2.45, 0.38);
 
       group.add(dirtMound, snakeGroup, hood, head, eyeL, eyeR);
+    } else if (type === 'nun') {
+      // The Creepy Flying Nun: Dark habit robes, veil, wide open mouth with blood spewing out
+      const robeMat = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.9 });
+      const whiteCollarMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.3 });
+      const bloodMat = new THREE.MeshBasicMaterial({ color: 0xcc0000 });
+      const faceMat = new THREE.MeshStandardMaterial({ color: 0xdddbd5, roughness: 0.7 });
+
+      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.2, 12), robeMat);
+      robe.position.y = 1.1;
+
+      const veil = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 10), robeMat);
+      veil.position.set(0, 2.1, 0);
+
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), whiteCollarMat);
+      collar.position.set(0, 1.7, 0);
+
+      const face = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 10), faceMat);
+      face.position.set(0, 1.95, 0.1);
+
+      const mouthOpen = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.1), new THREE.MeshBasicMaterial({ color: 0x110000 }));
+      mouthOpen.position.set(0, 1.85, 0.3);
+
+      const bloodStream = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.6, 8), bloodMat);
+      bloodStream.position.set(0, 1.5, 0.32);
+      bloodStream.rotation.x = 0.3;
+
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
+      eyeL.position.set(-0.09, 2.02, 0.32);
+      const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
+      eyeR.position.set(0.09, 2.02, 0.32);
+
+      group.add(robe, veil, collar, face, mouthOpen, bloodStream, eyeL, eyeR);
     } else if (type === 'winged_ice_skinwalker') {
       // Winged Frost Skinwalker with ice wings & translucent mist aura
       const frostSkinMat = new THREE.MeshStandardMaterial({ color: 0xdbf3ff, roughness: 0.3, metalness: 0.2 });
@@ -2146,28 +2187,7 @@ export class GameEngine {
         }
 
         if (creature.health <= 0) {
-          creature.state = 'dead';
-          if (creature.visualController) {
-            creature.visualController.playAnimation('death', false);
-          }
-          this.createBloodSpears(cVector);
-          soundEngine.playCreatureSound('witch_scream');
-          soundEngine.playCreatureSound('zombie');
-          
-          this.scene.remove(creature.mesh);
-          this.stats.kills++;
-          this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! TOTAL KILLS: ${this.stats.kills}`);
-
-          // Drop a weapon at the death coordinate
-          this.spawnGunDrop(cVector);
-
-          // Check if screen is clear!
-          this.checkAreaClear();
-
-          // Spawn slow replacement after controlled delay so screen stays clear
-          setTimeout(() => {
-            this.spawnCreaturesOfType(creature.type, 1);
-          }, 14000);
+          this.handleCreatureDeath(creature, cVector);
         } else {
           if (creature.visualController) {
             creature.visualController.playAnimation('damage', false);
@@ -2522,6 +2542,41 @@ export class GameEngine {
     }
   }
 
+  private handleCreatureDeath(creature: Creature, cVector: THREE.Vector3) {
+    if (creature.type === 'nun' && creature.aiController instanceof NunAI) {
+      const isDead = creature.aiController.handleLifeLoss();
+      if (!isDead) {
+        creature.health = creature.maxHealth;
+        return; // Survives with next life phase!
+      }
+    }
+
+    creature.state = 'dead';
+    if (creature.visualController) {
+      creature.visualController.playAnimation('death', false);
+    }
+    this.createBloodSpears(cVector);
+    soundEngine.playCreatureSound('witch_scream');
+    soundEngine.playCreatureSound('zombie');
+    
+    if (creature.mesh) {
+      this.scene.remove(creature.mesh);
+    }
+    this.stats.kills++;
+    this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! TOTAL KILLS: ${this.stats.kills}`);
+
+    // Drop a weapon at the death coordinate
+    this.spawnGunDrop(cVector);
+
+    // Check if screen is clear!
+    this.checkAreaClear();
+
+    // Spawn slow replacement after controlled delay so screen stays clear
+    setTimeout(() => {
+      this.spawnCreaturesOfType(creature.type, 1);
+    }, 14000);
+  }
+
   private createGushingBloodAndDismemberment(pos: THREE.Vector3) {
     this.createBloodSpears(pos);
 
@@ -2675,12 +2730,6 @@ export class GameEngine {
     } else {
       this.scene.add(decalMesh);
     }
-
-    setTimeout(() => {
-      if (decalMesh.parent) decalMesh.parent.remove(decalMesh);
-      decalGeo.dispose();
-      decalMat.dispose();
-    }, 30000);
   }
 
   private createBloodSpears(pos: THREE.Vector3) {
@@ -2976,6 +3025,11 @@ export class GameEngine {
       this.stats.undergroundPullTimer -= delta;
       if (this.stats.undergroundPullTimer <= 0) this.stats.undergroundPullTimer = 0;
       this.targetEyeHeight = 0.25; // Pulled underground into soil pit!
+    }
+
+    if (this.stats.blindTimer && this.stats.blindTimer > 0) {
+      this.stats.blindTimer -= delta;
+      if (this.stats.blindTimer <= 0) this.stats.blindTimer = 0;
     }
 
     // Decaying velocity damping

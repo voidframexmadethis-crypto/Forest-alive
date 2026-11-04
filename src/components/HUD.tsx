@@ -70,6 +70,16 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="absolute inset-0 z-50 bg-yellow-950/60 border-[24px] border-yellow-500/80 pointer-events-none animate-[pulse_0.05s_infinite]" />
       )}
 
+      {/* NUN BLIND ATTACK OVERLAY (Total Darkness / Blindness) */}
+      {stats.blindTimer !== undefined && stats.blindTimer > 0 && (
+        <div className="absolute inset-0 z-50 bg-black flex items-center justify-center pointer-events-none">
+          <div className="text-center space-y-2">
+            <div className="text-red-600 font-bold tracking-widest font-['Chakra_Petch'] text-2xl animate-pulse">EYES SEEARED BLIND!</div>
+            <div className="text-neutral-500 text-xs font-mono">The Nun's dark curse has blinded your vision...</div>
+          </div>
+        </div>
+      )}
+
       {/* SKINWALKER HORROR JUMP-SCARE OVERLAY */}
       {stats.skinwalkerJumpScareActive && (
         <div className="absolute inset-0 bg-black/90 z-50 flex items-center justify-center pointer-events-none animate-[pulse_0.1s_infinite]">

@@ -144,5 +144,16 @@ export const CREATURE_CONFIGS: Record<CreatureType, CreatureConfig> = {
     attackCooldown: 3500,
     description: '18-foot tall skeletal stick beast with inverted backward limbs that screams directly into your ear!',
     eyeColor: 0xffe066
+  },
+  nun: {
+    type: 'nun',
+    name: 'The Creepy Flying Nun (6 Lives)',
+    maxHealth: 600,
+    speed: 6.0,
+    damage: 0.30,
+    attackRange: 3.5,
+    attackCooldown: 3000,
+    description: 'Creepy hovering nun in dark robes with blood spewing from her wide-open mouth. Features 6 terrifying phases: Hover hug/scratch, Winged brutal attack, Blind attack, Underground dig jump scare, Tree-peeking creeper, and Ultimate Snake Neck Invisible attack!',
+    eyeColor: 0xcc0000
   }
 };
