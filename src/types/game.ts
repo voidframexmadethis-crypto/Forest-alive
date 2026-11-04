@@ -148,6 +148,9 @@ export interface PlayerStats {
   inJeep?: boolean;
   inAirplane?: boolean;
   inMacSuit?: boolean;
+  inGoldenEagle?: boolean;
+  goldenEagleStatus?: string | null;
+  canBoardGoldenEagle?: boolean;
   coughedBlood: boolean;
   isCrouched: boolean;
   isProne: boolean;

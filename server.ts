@@ -361,9 +361,9 @@ async function start() {
     });
   }
 
-  const port = process.env.PORT || 3000;
-  server.listen(port, () => {
-    console.log(`[Forest Alive Server] Running on http://localhost:${port} with Real-Time Multiplayer WebSockets`);
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`[Forest Alive Server] Running on http://0.0.0.0:${port} with Real-Time Multiplayer WebSockets`);
   });
 }
 

@@ -369,6 +369,9 @@ export default function App() {
           downedTeammateName={engineRef.current?.getNearbyDownedTeammate()?.name || null}
           onRevive={() => engineRef.current?.interact()}
           onLeaveMultiplayer={handleReturnMenu}
+          onCallGoldenEagle={() => engineRef.current?.callGoldenEagle()}
+          onBoardGoldenEagle={() => engineRef.current?.interact()}
+          onTriggerHydraulics={() => engineRef.current?.triggerGoldenEagleHydraulics()}
         />
       )}
 

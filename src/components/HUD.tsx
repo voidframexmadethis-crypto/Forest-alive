@@ -23,6 +23,9 @@ interface HUDProps {
   downedTeammateName?: string | null;
   onRevive?: () => void;
   onLeaveMultiplayer?: () => void;
+  onCallGoldenEagle?: () => void;
+  onBoardGoldenEagle?: () => void;
+  onTriggerHydraulics?: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -45,7 +48,10 @@ export const HUD: React.FC<HUDProps> = ({
   isMultiplayer,
   downedTeammateName,
   onRevive,
-  onLeaveMultiplayer
+  onLeaveMultiplayer,
+  onCallGoldenEagle,
+  onBoardGoldenEagle,
+  onTriggerHydraulics
 }) => {
   return (
     <div className="absolute inset-0 pointer-events-none z-20 select-none font-['Plus_Jakarta_Sans']">
@@ -220,6 +226,49 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
       )}
+
+      {/* 8b. GOLDEN EAGLE EXTRACTION VEHICLE STATUS HUD TICKER */}
+      {stats.goldenEagleStatus && (
+        <div className="absolute top-16 inset-x-0 flex justify-center pointer-events-none z-30">
+          <div className="px-6 py-2.5 bg-amber-950/95 border-2 border-yellow-400/90 rounded-2xl text-xs font-black text-amber-200 tracking-widest font-['Chakra_Petch'] shadow-[0_0_30px_rgba(234,179,8,0.7)] animate-pulse flex items-center gap-3">
+            <span className="text-lg">🦅</span>
+            <span>{stats.goldenEagleStatus}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 8c. GOLDEN EAGLE EXTRACTION VEHICLE TACTICAL CONTROLS */}
+      <div className="absolute top-20 right-4 pointer-events-auto flex flex-col items-end gap-2 z-30">
+        {onCallGoldenEagle && !stats.inGoldenEagle && (
+          <button
+            onClick={onCallGoldenEagle}
+            className="px-4 py-2.5 bg-amber-950/90 border-2 border-yellow-500/80 hover:border-yellow-300 rounded-xl text-[11px] font-black font-['Chakra_Petch'] tracking-widest text-yellow-300 hover:text-white flex items-center gap-2 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:shadow-[0_0_25px_rgba(234,179,8,0.6)] transition-all cursor-pointer active:scale-95"
+          >
+            <span className="text-base">🦅</span>
+            <span>CALL GOLDEN EAGLE [G]</span>
+          </button>
+        )}
+
+        {stats.inGoldenEagle && onTriggerHydraulics && (
+          <button
+            onClick={onTriggerHydraulics}
+            className="px-5 py-3 bg-yellow-400 hover:bg-yellow-300 border-2 border-amber-950 rounded-xl text-xs font-black font-['Chakra_Petch'] tracking-widest text-black flex items-center gap-2 shadow-[0_0_30px_rgba(250,204,21,0.9)] transition-all cursor-pointer animate-bounce active:scale-95"
+          >
+            <Zap className="w-5 h-5 fill-black text-black" />
+            <span>💥 HYDRAULIC BOUNCE [SPACE]</span>
+          </button>
+        )}
+
+        {stats.canBoardGoldenEagle && onBoardGoldenEagle && (
+          <button
+            onClick={onBoardGoldenEagle}
+            className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 border-2 border-white rounded-xl text-xs font-black font-['Chakra_Petch'] tracking-widest text-white flex items-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.8)] transition-all cursor-pointer animate-bounce active:scale-95"
+          >
+            <span className="text-base">🚪</span>
+            <span>BOARD GOLDEN EAGLE [E]</span>
+          </button>
+        )}
+      </div>
 
       {/* 9. BOTTOM LEFT: VITAL STATS & ON-SCREEN WALKING CONTROLS */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 pointer-events-auto">

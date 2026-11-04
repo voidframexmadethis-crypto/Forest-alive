@@ -25,6 +25,7 @@ import { WingedIceAI } from './ai/WingedIceAI';
 import { StickSkinwalkerAI } from './ai/StickSkinwalkerAI';
 import { NunAI } from './ai/NunAI';
 import { KatrinaCompanionAI } from './ai/KatrinaCompanionAI';
+import { GoldenEagleVehicle } from './GoldenEagleVehicle';
 import { networkClient } from './multiplayer/NetworkClient';
 import { RemotePlayerManager } from './multiplayer/RemotePlayerManager';
 import { MultiplayerRoom, NetworkPlayer } from '../types/multiplayer';
@@ -209,6 +210,7 @@ export class GameEngine {
   public isJeepMode: boolean = false;
   public isAirplaneMode: boolean = false;
   public isMacSuitMode: boolean = false;
+  public goldenEagleVehicle: GoldenEagleVehicle | null = null;
   private skinwalkerJumpScareCooldown: number = 0;
 
   // Realism Rigs & Forest Environment
@@ -352,6 +354,18 @@ export class GameEngine {
     this.buildAirplane();
     this.buildMacSuit();
     this.buildSafehouse();
+
+    // 6b. Golden Eagle Armored Extraction Vehicle
+    this.goldenEagleVehicle = new GoldenEagleVehicle({
+      scene: this.scene,
+      safehousePos: this.safehousePos,
+      onEvent: (msg) => this.callbacks.onGameEvent(msg),
+      onCreatureDamage: (cId, dmg, loc) => {
+        if (this.isMultiplayer) {
+          networkClient.sendCreatureDamage(cId, dmg, loc || 'body');
+        }
+      }
+    });
 
     // 7. Human Characters & Single-Player Rules vs Cooperative Mode
     if (this.isMultiplayer && this.localPlayerId) {
@@ -1814,6 +1828,18 @@ export class GameEngine {
       case 'Digit4': this.switchWeapon(3); break;
       case 'Digit5': this.switchWeapon(4); break;
       case 'Digit6': this.switchWeapon(5); break;
+      case 'KeyG': this.callGoldenEagle(); break;
+      case 'Space':
+        if (this.stats.inGoldenEagle) {
+          this.triggerGoldenEagleHydraulics();
+        } else {
+          // Standard jump
+          if (this.canJump) {
+            this.velocity.y += this.config.jumpForce;
+            this.canJump = false;
+          }
+        }
+        break;
       case 'KeyE': this.checkInteraction(); break;
       case 'Backquote':
         this.stats.isDebugActive = !this.stats.isDebugActive;
@@ -1948,6 +1974,27 @@ export class GameEngine {
         this.callbacks.onGameEvent(`❤️ REVIVED TEAMMATE ${downed.name}!`);
         soundEngine.playMechanicalClick(1.0, 900);
         return;
+      }
+    }
+
+    // Distance to Golden Eagle Extraction Vehicle
+    if (this.goldenEagleVehicle) {
+      const distEagle = this.playerPos.distanceTo(this.goldenEagleVehicle.group.position);
+      if (distEagle < 6.0) {
+        if (!this.stats.inGoldenEagle) {
+          const success = this.goldenEagleVehicle.boardVehicle(this.localPlayerId || 'local_player');
+          if (success) {
+            this.stats.inGoldenEagle = true;
+            this.callbacks.onGameEvent('🦅 BOARDED GOLDEN EAGLE EXTRACTION VEHICLE!');
+            this.callbacks.onStatsChange({ ...this.stats });
+            return;
+          }
+        } else {
+          this.stats.inGoldenEagle = false;
+          this.callbacks.onGameEvent('🚪 EXITED GOLDEN EAGLE VEHICLE');
+          this.callbacks.onStatsChange({ ...this.stats });
+          return;
+        }
       }
     }
 
@@ -2863,6 +2910,26 @@ export class GameEngine {
         this.katrinaCompanion.update(delta, this.playerPos, this.creatures);
       }
 
+      // Golden Eagle Vehicle update tick
+      if (this.goldenEagleVehicle) {
+        this.goldenEagleVehicle.update(delta, now / 1000, this.creatures, this.playerPos);
+        this.stats.goldenEagleStatus = this.goldenEagleVehicle.getHUDStatusText();
+
+        const distEagle = this.playerPos.distanceTo(this.goldenEagleVehicle.group.position);
+        this.stats.canBoardGoldenEagle = distEagle < 6.0 && this.goldenEagleVehicle.currentState === 'waiting_for_boarding';
+
+        if (this.stats.inGoldenEagle) {
+          // Snap player position & camera inside Golden Eagle
+          this.playerPos.copy(this.goldenEagleVehicle.group.position).add(new THREE.Vector3(0, 1.8, 0));
+          this.camera.position.copy(this.playerPos);
+
+          if (this.goldenEagleVehicle.currentState === 'idle' && this.goldenEagleVehicle.passengersInside.length === 0) {
+            this.stats.inGoldenEagle = false;
+            this.callbacks.onGameEvent('✅ SAFELY ARRIVED AT SAFEHOUSE!');
+          }
+        }
+      }
+
       // Cooperative Multiplayer: Tick remote 3D player rigs and broadcast 20Hz position update
       if (this.isMultiplayer) {
         if (this.remotePlayerManager) {
@@ -3490,6 +3557,11 @@ export class GameEngine {
       this.katrinaCompanion = null;
     }
 
+    if (this.goldenEagleVehicle) {
+      this.goldenEagleVehicle.dispose();
+      this.goldenEagleVehicle = null;
+    }
+
     if (this.renderer && this.renderer.domElement) {
       this.container.removeChild(this.renderer.domElement);
     }
@@ -3502,6 +3574,18 @@ export class GameEngine {
 
   public interact() {
     this.checkInteraction();
+  }
+
+  public callGoldenEagle() {
+    if (this.goldenEagleVehicle) {
+      this.goldenEagleVehicle.callGoldenEagle(this.playerPos.clone());
+    }
+  }
+
+  public triggerGoldenEagleHydraulics() {
+    if (this.goldenEagleVehicle) {
+      this.goldenEagleVehicle.triggerHydraulicBounce(performance.now() / 1000, this.creatures);
+    }
   }
 
   public getNearbyDownedTeammate(): { id: string; name: string } | null {
