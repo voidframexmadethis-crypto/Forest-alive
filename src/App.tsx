@@ -300,28 +300,13 @@ export default function App() {
   };
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center">
-      {/* Orientation Lock Guard for Mobile */}
-      <div className="orientation-guard">
-        <div className="max-w-xs space-y-4">
-          <div className="w-16 h-16 bg-red-600/20 border border-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8 text-red-500 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-red-500 font-['Chakra_Petch'] tracking-tighter">PORTRAIT MODE REQUIRED</h1>
-          <p className="text-neutral-400 font-mono text-[10px] uppercase tracking-widest leading-relaxed">
-            Forest Alive is optimized for long-screen phone displays. Please rotate your device to portrait to continue survival operations.
-          </p>
-        </div>
-      </div>
-      
-      <div className="portrait-frame w-full h-full shadow-[0_0_100px_rgba(0,0,0,1)]">
+    <div className="relative w-full h-screen bg-black overflow-hidden">
       
       {/* 0. OPENING CINEMATIC MOVIE */}
       {gameState === 'opening_cinematic' && (
         <OpeningCinematicModal onComplete={handleOpeningCinematicComplete} />
       )}
+
 
       {/* 1. MAIN MENU */}
       {gameState === 'menu' && (
@@ -414,7 +399,6 @@ export default function App() {
         />
       )}
 
-      </div>
     </div>
   );
 }

@@ -63,7 +63,7 @@ export type ClientMessage =
   | { type: 'sync_creatures'; creatures: SyncedCreature[] }
   | { type: 'revive_player'; targetPlayerId: string }
   | { type: 'complete_mission' }
-  | { type: 'story_event_trigger'; event: 'katrina_labor' }
+  | { type: 'story_event_trigger'; event: 'katrina_labor' | 'campaign_complete' }
   | { type: 'ping'; timestamp: number };
 
 export type ServerMessage =
@@ -77,6 +77,6 @@ export type ServerMessage =
   | { type: 'creature_damage'; playerId: string; creatureId: string; damage: number; hitLocation?: string }
   | { type: 'player_downed'; playerId: string; playerName: string; characterId: string }
   | { type: 'player_revived'; reviverId: string; targetId: string }
-  | { type: 'story_event_triggered'; event: 'katrina_labor' }
+  | { type: 'story_event_triggered'; event: 'katrina_labor' | 'campaign_complete' }
   | { type: 'error'; message: string }
   | { type: 'pong'; timestamp: number };

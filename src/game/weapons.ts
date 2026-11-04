@@ -180,5 +180,65 @@ export const WEAPONS_DATABASE: Record<WeaponType, Weapon> = {
     adsZoom: 0.8,
     soundName: 'sniper',
     description: 'Fires ground-penetrating kinetic acoustic spikes that travel through dirt and bedrock to destroy subterranean enemies like the Subterranean Pit Snake!'
+  },
+  bomb_grenade: {
+    id: 'bomb_grenade',
+    name: 'Cap Click Bomb Grenade',
+    category: 'Throwable',
+    damage: 500,
+    fireRate: 1500,
+    clipSize: 1,
+    currentAmmo: 5,
+    totalReserve: 15,
+    reloadTime: 1800,
+    recoil: 0.01,
+    adsZoom: 0.85,
+    soundName: 'grenade',
+    description: 'Special cap-click bomb. Click the cap, throw it, and watch the explosion blow off creature heads, arms, torsos, and legs with blood gushing everywhere!'
+  },
+  twin_grenade_launcher: {
+    id: 'twin_grenade_launcher',
+    name: 'TWIN-BARREL AUTOMATIC GRENADE LAUNCHER',
+    category: 'Special Heavy',
+    damage: 480,
+    fireRate: 180, // fast automatic dual firing
+    clipSize: 30,
+    currentAmmo: 30,
+    totalReserve: 180,
+    reloadTime: 2800,
+    recoil: 0.05,
+    adsZoom: 0.75,
+    soundName: 'tank_turret',
+    description: 'Twin-barrel automatic grenade launcher. Fires rapid dual high-explosive grenades that blow whole creatures into dismembered pieces with blood gushing on the ground!'
+  },
+  dragon_fire_gun: {
+    id: 'dragon_fire_gun',
+    name: 'DRAGON FIRE GUN 899-BULLET BARRAGE',
+    category: 'Dragon Fire Heavy',
+    damage: 110,
+    fireRate: 20, // ultra fast automatic stream
+    clipSize: 899,
+    currentAmmo: 899,
+    totalReserve: 8990,
+    reloadTime: 400, // rapid auto-reload
+    recoil: 0.005,
+    adsZoom: 0.75,
+    soundName: 'minigun',
+    description: 'Fires an ultra-fast automatic 899-bullet dragon fire stream that incinerates skinwalkers and creatures instantly, auto-reloading rapidly!'
+  },
+  smoke_gun: {
+    id: 'smoke_gun',
+    name: 'ALLERGIC POISON SMOKE GUN',
+    category: 'Toxic Chemical',
+    damage: 999, // instant poison kill!
+    fireRate: 120,
+    clipSize: 40,
+    currentAmmo: 40,
+    totalReserve: 240,
+    reloadTime: 1200,
+    recoil: 0.01,
+    adsZoom: 0.85,
+    soundName: 'm4a1',
+    description: 'Fires a dense stream of toxic allergic smoke. Skinwalkers and monsters smell it and flee in terror — direct hits poison and kill them instantly!'
   }
 };

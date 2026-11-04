@@ -133,13 +133,17 @@ export class GameEngine {
     isSliding: false,
     isHitmarkerActive: false,
     skinwalkerJumpScareActive: false,
-    unlockedWeapons: 'm4a1,smoke_grenade,shotgun,sniper,minigun,grenade'
+    unlockedWeapons: 'dragon_fire_gun,smoke_gun,m4a1,smoke_grenade,bomb_grenade,twin_grenade_launcher,shotgun,sniper,minigun,grenade'
   };
 
-  public currentWeapon: Weapon = { ...WEAPONS_DATABASE.m4a1 };
+  public currentWeapon: Weapon = { ...WEAPONS_DATABASE.dragon_fire_gun };
   public availableWeapons: Weapon[] = [
+    { ...WEAPONS_DATABASE.dragon_fire_gun },
+    { ...WEAPONS_DATABASE.smoke_gun },
     { ...WEAPONS_DATABASE.m4a1 },
     { ...WEAPONS_DATABASE.smoke_grenade },
+    { ...WEAPONS_DATABASE.bomb_grenade },
+    { ...WEAPONS_DATABASE.twin_grenade_launcher },
     { ...WEAPONS_DATABASE.shotgun },
     { ...WEAPONS_DATABASE.sniper },
     { ...WEAPONS_DATABASE.minigun },
@@ -150,7 +154,7 @@ export class GameEngine {
   private thrownGrenades: {
     mesh: THREE.Group;
     velocity: THREE.Vector3;
-    type: 'smoke_grenade' | 'grenade';
+    type: 'smoke_grenade' | 'grenade' | 'bomb_grenade' | 'twin_grenade';
     fuseTimer: number;
     exploded: boolean;
   }[] = [];
@@ -988,6 +992,93 @@ export class GameEngine {
 
       gunGroup.add(body, core, drillTip);
       gunGroup.position.set(0.24, -0.22, -0.45);
+    } else if (this.currentWeapon.id === 'bomb_grenade') {
+      // CAP CLICK BOMB GRENADE: Dark metallic grenade with red click cap button and gold ring
+      const bombMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f, roughness: 0.3, metalness: 0.8 });
+      const redCapMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.4 });
+
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.095, 14, 14), bombMat);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.04, 10), redCapMat);
+      cap.position.y = 0.1;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.005, 6, 12), goldMat);
+      ring.position.set(0.035, 0.09, 0);
+
+      gunGroup.add(body, cap, ring);
+      gunGroup.position.set(0.2, -0.15, -0.35);
+    } else if (this.currentWeapon.id === 'twin_grenade_launcher') {
+      // TWIN-BARREL AUTOMATIC GRENADE LAUNCHER: Dual heavy barrels, drum ammo magazine & tactical frame
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.4, metalness: 0.85 });
+      const barrelMat = new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.3, metalness: 0.9 });
+      const redStripMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.5 });
+
+      // Main frame body
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.55), frameMat);
+
+      // Left & Right Twin Heavy Barrels
+      const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.52, 12), barrelMat);
+      barrelL.rotation.x = Math.PI / 2;
+      barrelL.position.set(-0.05, 0.02, -0.45);
+
+      const barrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.52, 12), barrelMat);
+      barrelR.rotation.x = Math.PI / 2;
+      barrelR.position.set(0.05, 0.02, -0.45);
+
+      // Dual Drum Ammo Magazine
+      const drumMag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.22), frameMat);
+      drumMag.position.set(0, -0.12, -0.08);
+
+      // Red Warning Strip
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.185, 0.03, 0.2), redStripMat);
+      strip.position.set(0, 0.06, -0.1);
+
+      gunGroup.add(body, barrelL, barrelR, drumMag, strip);
+      gunGroup.position.set(0.22, -0.2, -0.45);
+    } else if (this.currentWeapon.id === 'dragon_fire_gun') {
+      // DRAGON FIRE GUN: Glowing fire-dragon snout nozzle, gold dragon scale body & massive 899-round ammo box
+      const dragonFrameMat = new THREE.MeshStandardMaterial({ color: 0x1f1008, roughness: 0.3, metalness: 0.9 });
+      const goldRuneMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3 });
+      const fireGlowMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+
+      // Main dragon chassis
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.6), dragonFrameMat);
+
+      // Dragon head snout barrel
+      const snout = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 8), dragonFrameMat);
+      snout.rotation.x = -Math.PI / 2;
+      snout.position.set(0, 0.02, -0.42);
+
+      // Glowing fire core ring
+      const fireRing = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 16), fireGlowMat);
+      fireRing.position.set(0, 0.02, -0.3);
+
+      // Massive 899-round fire ammo box
+      const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.32), goldRuneMat);
+      ammoBox.position.set(0, -0.15, -0.05);
+
+      gunGroup.add(body, snout, fireRing, ammoBox);
+      gunGroup.position.set(0.22, -0.2, -0.45);
+    } else if (this.currentWeapon.id === 'smoke_gun') {
+      // ALLERGIC POISON SMOKE GUN: Glowing toxic green chemical canister & allergic smoke nozzle
+      const toxicBodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2e1d, roughness: 0.4 });
+      const greenGasMat = new THREE.MeshBasicMaterial({ color: 0x00ff44 });
+      const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x4a5d43, metalness: 0.8 });
+
+      // Main weapon body
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.5), toxicBodyMat);
+
+      // Glowing toxic chemical chamber
+      const gasChamber = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.28, 12), greenGasMat);
+      gasChamber.rotation.x = Math.PI / 2;
+      gasChamber.position.set(0, 0.01, -0.05);
+
+      // Smoke emitter nozzle
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.25, 12), nozzleMat);
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(0, 0.02, -0.4);
+
+      gunGroup.add(body, gasChamber, nozzle);
+      gunGroup.position.set(0.22, -0.2, -0.42);
     } else {
       // Minigun
       const barrels = new THREE.Group();
@@ -1070,38 +1161,32 @@ export class GameEngine {
   private spawnInitialCreatures() {
     this.creatures = [];
 
-    // Spawn based on game mode
+    // Paced slow trickle spawning so the screen stays clear and manageable
     if (this.mode === 'blood_harvest') {
-      this.spawnCreaturesOfType('zombie', 6);
-      this.spawnCreaturesOfType('striker_zombie', 4);
+      this.spawnCreaturesOfType('zombie', 2);
+      this.spawnCreaturesOfType('skinwalker', 1);
+      this.spawnCreaturesOfType('striker_zombie', 1);
+
+      // Trickle remaining slowly over time
+      setTimeout(() => this.spawnCreaturesOfType('double_tank', 1), 12000);
+      setTimeout(() => this.spawnCreaturesOfType('crying_witch', 1), 24000);
+      setTimeout(() => this.spawnCreaturesOfType('blood_spider', 1), 36000);
+      setTimeout(() => this.spawnCreaturesOfType('winged_ice_skinwalker', 1), 48000);
+    } else if (this.mode === 'death_toll') {
+      this.spawnCreaturesOfType('zombie', 3);
+      this.spawnCreaturesOfType('striker_zombie', 1);
+
+      setTimeout(() => this.spawnCreaturesOfType('jockey_9tentacles', 1), 14000);
+      setTimeout(() => this.spawnCreaturesOfType('cloud_creature', 1), 28000);
+      setTimeout(() => this.spawnCreaturesOfType('subterranean_snake', 1), 42000);
+    } else {
+      // CREATURE MODE / THE FAST GUY
       this.spawnCreaturesOfType('skinwalker', 2);
       this.spawnCreaturesOfType('double_tank', 1);
-      this.spawnCreaturesOfType('crying_witch', 1);
-      this.spawnCreaturesOfType('blood_spider', 2);
-      this.spawnCreaturesOfType('subterranean_snake', 2);
-      this.spawnCreaturesOfType('winged_ice_skinwalker', 1);
-      this.spawnCreaturesOfType('stick_skinwalker_18ft', 1);
-    } else if (this.mode === 'death_toll') {
-      this.spawnCreaturesOfType('zombie', 8);
-      this.spawnCreaturesOfType('striker_zombie', 6);
-      this.spawnCreaturesOfType('jockey_9tentacles', 2);
-      this.spawnCreaturesOfType('double_tank', 1);
-      this.spawnCreaturesOfType('cloud_creature', 1);
-      this.spawnCreaturesOfType('subterranean_snake', 2);
-      this.spawnCreaturesOfType('blood_spider', 2);
-      this.spawnCreaturesOfType('stick_skinwalker_18ft', 1);
-    } else {
-      // CREATURE MODE / THE FAST GUY - ALL ELITE CREATURES
-      this.spawnCreaturesOfType('skinwalker', 3);
-      this.spawnCreaturesOfType('double_tank', 2);
-      this.spawnCreaturesOfType('jockey_9tentacles', 2);
-      this.spawnCreaturesOfType('crying_witch', 2);
-      this.spawnCreaturesOfType('cloud_creature', 2);
-      this.spawnCreaturesOfType('flying_phantom', 3);
-      this.spawnCreaturesOfType('blood_spider', 3);
-      this.spawnCreaturesOfType('subterranean_snake', 3);
-      this.spawnCreaturesOfType('winged_ice_skinwalker', 2);
-      this.spawnCreaturesOfType('stick_skinwalker_18ft', 2);
+
+      setTimeout(() => this.spawnCreaturesOfType('winged_ice_skinwalker', 1), 15000);
+      setTimeout(() => this.spawnCreaturesOfType('flying_phantom', 1), 30000);
+      setTimeout(() => this.spawnCreaturesOfType('stick_skinwalker_18ft', 1), 45000);
     }
   }
 
@@ -1884,7 +1969,11 @@ export class GameEngine {
     if (now - this.lastFireTime < this.currentWeapon.fireRate || this.isReloading) return;
 
     if (this.currentWeapon.currentAmmo <= 0) {
-      soundEngine.playDryFire();
+      if (this.currentWeapon.id === 'dragon_fire_gun') {
+        this.triggerReload();
+      } else {
+        soundEngine.playDryFire();
+      }
       return;
     }
 
@@ -1892,9 +1981,16 @@ export class GameEngine {
     this.currentWeapon.currentAmmo--;
     this.callbacks.onWeaponChange({ ...this.currentWeapon });
 
-    // Throwable weapon check (Smoke Grenade or Frag Grenade)
-    if (this.currentWeapon.id === 'smoke_grenade' || this.currentWeapon.id === 'grenade') {
+    // Throwable weapon check (Smoke Grenade, Frag Grenade, Cap Click Bomb Grenade)
+    if (this.currentWeapon.id === 'smoke_grenade' || this.currentWeapon.id === 'grenade' || this.currentWeapon.id === 'bomb_grenade') {
       this.throwGrenade(this.currentWeapon.id);
+      return;
+    }
+
+    // Twin-Barrel Automatic Grenade Launcher check
+    if (this.currentWeapon.id === 'twin_grenade_launcher') {
+      soundEngine.playGunshot('tank_turret');
+      this.launchTwinGrenades();
       return;
     }
 
@@ -1983,7 +2079,21 @@ export class GameEngine {
         this.stats.isHitmarkerActive = true;
         soundEngine.playHitmarkerTick();
 
-        if (this.currentWeapon.id === 'fast_guy') {
+        if (this.currentWeapon.id === 'smoke_gun') {
+          // ALLERGIC POISON SMOKE GUN: Direct hit kills creatures instantly with toxic poison!
+          creature.health = 0;
+          this.callbacks.onGameEvent(`🧪 ALLERGIC POISON SMOKE OBLITERATED ${creature.name}! MONSTERS FLEE IN TERROR!`);
+
+          // Nearby monsters smell the allergic smoke and flee in terror!
+          this.creatures.forEach(other => {
+            if (other !== creature && other.state !== 'dead') {
+              other.state = 'fleeing';
+            }
+          });
+        } else if (this.currentWeapon.id === 'dragon_fire_gun') {
+          // DRAGON FIRE GUN: Ultra-fast incinerating fire barrage impact
+          this.createBloodSpears(cVector);
+        } else if (this.currentWeapon.id === 'fast_guy') {
           // Fast Guy 6000-bullet multi-stream extra barrage impact
           this.createBloodSpears(cVector);
         } else if (this.currentWeapon.id === 'whip') {
@@ -2013,15 +2123,18 @@ export class GameEngine {
           
           this.scene.remove(creature.mesh);
           this.stats.kills++;
-          this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! CREATURE SCREAMED IN AGONY!`);
+          this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! TOTAL KILLS: ${this.stats.kills}`);
 
           // Drop a weapon at the death coordinate
           this.spawnGunDrop(cVector);
 
-          // Spawn replacement after delay
+          // Check if screen is clear!
+          this.checkAreaClear();
+
+          // Spawn slow replacement after controlled delay so screen stays clear
           setTimeout(() => {
             this.spawnCreaturesOfType(creature.type, 1);
-          }, 6000);
+          }, 14000);
         } else {
           if (creature.visualController) {
             creature.visualController.playAnimation('damage', false);
@@ -2034,7 +2147,7 @@ export class GameEngine {
   }
 
   // --- THROWABLE GRENADES & ALLERGIC SMOKE CLOUD SYSTEM ---
-  private throwGrenade(type: 'smoke_grenade' | 'grenade') {
+  private throwGrenade(type: 'smoke_grenade' | 'grenade' | 'bomb_grenade') {
     const grenadeGroup = new THREE.Group();
 
     if (type === 'smoke_grenade') {
@@ -2044,6 +2157,13 @@ export class GameEngine {
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 12), capMat);
       cap.position.y = 0.2;
       grenadeGroup.add(canister, cap);
+    } else if (type === 'bomb_grenade') {
+      const bombMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.8 });
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.3 });
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), bombMat);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), capMat);
+      cap.position.set(0, 0.18, 0);
+      grenadeGroup.add(sphere, cap);
     } else {
       const fragMat = new THREE.MeshStandardMaterial({ color: 0x4a5d33, roughness: 0.7 });
       const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), fragMat);
@@ -2070,6 +2190,8 @@ export class GameEngine {
     this.callbacks.onGameEvent(
       type === 'smoke_grenade'
         ? '💨 ALLERGIC SMOKE GRENADE THROWN!'
+        : type === 'bomb_grenade'
+        ? '💥 CAP CLICK BOMB GRENADE THROWN!'
         : '💣 FRAG GRENADE THROWN!'
     );
   }
@@ -2165,7 +2287,7 @@ export class GameEngine {
     }
   }
 
-  private detonateGrenade(type: 'smoke_grenade' | 'grenade', pos: THREE.Vector3) {
+  private detonateGrenade(type: 'smoke_grenade' | 'grenade' | 'bomb_grenade' | 'twin_grenade', pos: THREE.Vector3) {
     if (type === 'smoke_grenade') {
       const cloudGroup = new THREE.Group();
       cloudGroup.position.copy(pos);
@@ -2223,6 +2345,70 @@ export class GameEngine {
 
       soundEngine.playDryReloadSound();
       this.callbacks.onGameEvent('💨 ALLERGIC SMOKE CLOUD BILLOWING! MONSTERS ARE FLEEING!');
+    } else if (type === 'bomb_grenade') {
+      soundEngine.playGunshot('tank_turret');
+
+      const expLight = new THREE.PointLight(0xff0000, 35, 45);
+      expLight.position.copy(pos);
+      this.scene.add(expLight);
+      setTimeout(() => { this.scene.remove(expLight); }, 300);
+
+      this.creatures.forEach((creature) => {
+        if (creature.state === 'dead') return;
+        const cPos = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
+        const dist = cPos.distanceTo(pos);
+
+        if (dist < 16.0) {
+          creature.health = 0;
+          creature.state = 'dead';
+          this.scene.remove(creature.mesh);
+          this.stats.kills++;
+
+          this.createGushingBloodAndDismemberment(cPos);
+          this.callbacks.onGameEvent(`💥 CAP CLICK BOMB GRENADE OBLITERATED ${creature.name}! HEAD, ARMS, TORSO & LEGS BLOWN OFF WITH BLOOD GUSHING EVERYWHERE!`);
+
+          this.checkAreaClear();
+          setTimeout(() => {
+            this.spawnCreaturesOfType(creature.type, 1);
+          }, 14000);
+        }
+      });
+      this.callbacks.onStatsChange({ ...this.stats });
+    } else if ((type as any) === 'twin_grenade') {
+      soundEngine.playGunshot('tank_turret');
+
+      const expLight = new THREE.PointLight(0xffaa00, 28, 35);
+      expLight.position.copy(pos);
+      this.scene.add(expLight);
+      setTimeout(() => { this.scene.remove(expLight); }, 250);
+
+      this.creatures.forEach((creature) => {
+        if (creature.state === 'dead') return;
+        const cPos = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
+        const dist = cPos.distanceTo(pos);
+
+        if (dist < 14.0) {
+          const damage = Math.round(480 * (1.0 - dist / 14.0));
+          creature.health -= damage;
+
+          if (creature.health <= 0) {
+            creature.state = 'dead';
+            this.scene.remove(creature.mesh);
+            this.stats.kills++;
+
+            this.createGushingBloodAndDismemberment(cPos);
+            this.callbacks.onGameEvent(`🚀 TWIN GRENADE LAUNCHER SHREDDED ${creature.name}! WHOLE CREATURE BLOWN INTO PIECES WITH BLOOD GUSHING ON GROUND!`);
+
+            this.checkAreaClear();
+            setTimeout(() => {
+              this.spawnCreaturesOfType(creature.type, 1);
+            }, 14000);
+          } else {
+            this.createBloodSpears(cPos);
+          }
+        }
+      });
+      this.callbacks.onStatsChange({ ...this.stats });
     } else {
       soundEngine.playGunshot('tank_turret');
 
@@ -2247,12 +2433,145 @@ export class GameEngine {
             this.scene.remove(creature.mesh);
             this.stats.kills++;
             this.callbacks.onGameEvent(`💣 FRAG BLAST DECIMATED ${creature.name}!`);
+
+            this.checkAreaClear();
+            setTimeout(() => {
+              this.spawnCreaturesOfType(creature.type, 1);
+            }, 14000);
           }
         }
       });
 
       this.callbacks.onStatsChange({ ...this.stats });
     }
+  }
+
+  private launchTwinGrenades() {
+    const camPos = this.camera.position.clone();
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    [-0.12, 0.12].forEach((offset) => {
+      const grenadeGroup = new THREE.Group();
+      const grenadeMat = new THREE.MeshStandardMaterial({ color: 0xcc2200, roughness: 0.3, metalness: 0.8 });
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 10), grenadeMat);
+      body.rotation.x = Math.PI / 2;
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), capMat);
+      cap.position.z = -0.1;
+      grenadeGroup.add(body, cap);
+
+      const spawnPos = camPos.clone().add(forward.clone().multiplyScalar(0.6)).add(right.clone().multiplyScalar(offset));
+      grenadeGroup.position.copy(spawnPos);
+      this.scene.add(grenadeGroup);
+
+      const initialVelocity = forward.clone().multiplyScalar(38).add(new THREE.Vector3(0, 2, 0));
+
+      this.thrownGrenades.push({
+        mesh: grenadeGroup,
+        velocity: initialVelocity,
+        type: 'twin_grenade' as any,
+        fuseTimer: 0.8,
+        exploded: false
+      });
+    });
+
+    this.callbacks.onGameEvent('💥 TWIN-BARREL AUTOMATIC LAUNCHER FIRED DUAL GRENADES!');
+  }
+
+  private checkAreaClear() {
+    const activeEnemies = this.creatures.filter(c => c.state !== 'dead').length;
+    if (activeEnemies === 0) {
+      soundEngine.playVictoryFanfare();
+      this.callbacks.onGameEvent(`✨ CLEAR SCREEN! ALL SKINWALKERS & CREATURES NEUTRALIZED! TOTAL KILLS: ${this.stats.kills}`);
+    }
+  }
+
+  private createGushingBloodAndDismemberment(pos: THREE.Vector3) {
+    this.createBloodSpears(pos);
+
+    const gibGroup = new THREE.Group();
+    const fleshMat = new THREE.MeshStandardMaterial({ color: 0x881111, roughness: 0.6 });
+
+    const headGib = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), fleshMat);
+    headGib.position.set(pos.x, pos.y + 1.6, pos.z);
+
+    const torsoGib = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.25), fleshMat);
+    torsoGib.position.set(pos.x, pos.y + 1.1, pos.z);
+
+    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.4, 8), fleshMat);
+    armL.position.set(pos.x - 0.3, pos.y + 1.2, pos.z);
+
+    const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.4, 8), fleshMat);
+    armR.position.set(pos.x + 0.3, pos.y + 1.2, pos.z);
+
+    const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.5, 8), fleshMat);
+    legL.position.set(pos.x - 0.2, pos.y + 0.5, pos.z);
+
+    const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.5, 8), fleshMat);
+    legR.position.set(pos.x + 0.2, pos.y + 0.5, pos.z);
+
+    const parts = [headGib, torsoGib, armL, armR, legL, legR];
+    const velocities: THREE.Vector3[] = [];
+
+    parts.forEach((part) => {
+      gibGroup.add(part);
+      const vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 14,
+        Math.random() * 10 + 6,
+        (Math.random() - 0.5) * 14
+      );
+      velocities.push(vel);
+    });
+
+    this.particleGroup.add(gibGroup);
+
+    const bloodPoolMat = new THREE.MeshBasicMaterial({
+      color: 0x660000,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    });
+    const bloodPool = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), bloodPoolMat);
+    bloodPool.rotation.x = -Math.PI / 2;
+    bloodPool.position.set(pos.x, 0.02, pos.z);
+    this.particleGroup.add(bloodPool);
+
+    let elapsed = 0;
+    const animateGibs = () => {
+      elapsed += 0.016;
+      if (elapsed < 2.5) {
+        if (bloodPool.scale.x < 8.0) {
+          const s = bloodPool.scale.x + 0.15;
+          bloodPool.scale.set(s, s, s);
+        }
+
+        parts.forEach((p, idx) => {
+          const v = velocities[idx];
+          if (p.position.y > 0.05) {
+            p.position.addScaledVector(v, 0.016);
+            v.y -= 25 * 0.016;
+            p.rotation.x += 0.2;
+            p.rotation.z += 0.15;
+          } else {
+            p.position.y = 0.05;
+          }
+        });
+
+        requestAnimationFrame(animateGibs);
+      } else {
+        setTimeout(() => {
+          this.particleGroup.remove(gibGroup);
+          this.particleGroup.remove(bloodPool);
+        }, 8000);
+      }
+    };
+    requestAnimationFrame(animateGibs);
+
+    soundEngine.playCreatureSound('witch_scream');
+    soundEngine.playCreatureSound('zombie');
   }
 
   private spawnBloodImpact(hitPoint: THREE.Vector3, hitNormal: THREE.Vector3, hitTransform?: THREE.Object3D) {

@@ -11,7 +11,8 @@ export type CutsceneStoryType =
   | 'luis_intro' 
   | 'bill_intro' 
   | 'the_outbreak' 
-  | 'survivor_meeting';
+  | 'survivor_meeting'
+  | 'katrina_labor_event';
 
 interface CutsceneProps {
   type: CutsceneStoryType;
@@ -102,6 +103,15 @@ export const CUTSCENE_METADATA: Record<CutsceneStoryType, {
       { title: 'GATHERING AROUND THE WAR MAP', desc: 'Displaced by the carnage, the survivors converge at the underground safehouse bunker. Titan takes tactical command of the group.', icon: 'users', soundCue: 'click' },
       { title: 'COMBINING ARSENALS & SKILLS', desc: 'Luis reinforces the steel doors, Bill establishes sniper overwatch at the windows, and Natasha and Katrina organize medical triage.', icon: 'shield', soundCue: 'reload' },
       { title: 'MARCHING INTO THE HORDE', desc: 'United as one unbreakable squad, the survivors step out into the mist to reclaim their home and fight back against the dark forces.', icon: 'play', soundCue: 'victory' }
+    ]
+  },
+  katrina_labor_event: {
+    title: "KATRINA'S SAFE-HOUSE EMERGENCY: A NEW LIFE BEGINS",
+    subtitle: 'Surrounded by the safehouse defenses, Katrina successfully delivers her baby with the squad protecting the perimeter.',
+    steps: [
+      { title: 'MEDICAL TRIAGE IN THE BUNKER', desc: 'Katrina goes into labor inside the safehouse. Natasha and the squad secure the medical bay and prepare emergency supplies.', icon: 'heart', soundCue: 'click' },
+      { title: 'PERIMETER DEFENSE HOLDOUT', desc: 'Titan, Luis, and Bill defend the steel doors from incoming creature waves while Natasha assists Katrina through the labor delivery.', icon: 'shield', soundCue: 'reload' },
+      { title: 'A NEW RAY OF HOPE', desc: 'A healthy baby is born inside the safehouse! Katrina rests peacefully while the squad vows to protect them both at all costs.', icon: 'sparkles', soundCue: 'victory' }
     ]
   }
 };

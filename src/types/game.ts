@@ -4,7 +4,7 @@ export type ForestType = 'pine_dark' | 'red_mist' | 'dead_winter';
 
 export type Difficulty = 'veteran' | 'realism' | 'nightmare';
 
-export type GameState = 'menu' | 'opening_cinematic' | 'intro_cutscene' | 'playing' | 'safehouse_rest' | 'telescope_mode' | 'tank_driving' | 'escape_cutscene' | 'game_over' | 'victory';
+export type GameState = 'menu' | 'opening_cinematic' | 'intro_cutscene' | 'playing' | 'safehouse_rest' | 'telescope_mode' | 'tank_driving' | 'escape_cutscene' | 'game_over' | 'victory' | 'campaign_complete';
 
 export type WeaponType = 
   | 'm4a1' 
@@ -13,12 +13,16 @@ export type WeaponType =
   | 'minigun' 
   | 'smoke_grenade' 
   | 'grenade' 
+  | 'bomb_grenade'
   | 'tank_turret' 
   | 'ak47' 
   | 'fast_guy'
   | 'dragon_gun'
   | 'whip'
-  | 'underground_gun';
+  | 'underground_gun'
+  | 'twin_grenade_launcher'
+  | 'dragon_fire_gun'
+  | 'smoke_gun';
 
 export type WeaponAnimState = 
   | 'idle'

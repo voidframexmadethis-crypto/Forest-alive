@@ -3,6 +3,7 @@ import { Difficulty, ForestType, GameMode } from '../types/game';
 import { Play, Shield, Flame, Crosshair, Skull, Volume2, VolumeX, Eye, Radio, BookOpen, X, Film, Users, Sparkles, Home, Heart, ShieldAlert, User } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 import { CutsceneStoryType } from './CutsceneModal';
+import { HumanCharacterId } from '../game/characterMesh';
 
 interface MainMenuProps {
   onStartGame: (mode: GameMode, forest: ForestType, difficulty: Difficulty) => void;
