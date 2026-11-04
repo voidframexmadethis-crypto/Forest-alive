@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Difficulty, ForestType, GameMode } from '../types/game';
-import { Play, Shield, Flame, Crosshair, Skull, Volume2, VolumeX, Eye, Radio, BookOpen, X, Film, Users, Sparkles, Home, Heart, ShieldAlert, User } from 'lucide-react';
+import { Play, Shield, Flame, Crosshair, Skull, Volume2, VolumeX, Eye, Radio, BookOpen, X, Film, Users, Sparkles, Home, Heart, ShieldAlert, User, Cpu } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 import { CutsceneStoryType } from './CutsceneModal';
 import { HumanCharacterId } from '../game/characterMesh';
+import { ModManagerModal } from './ModManagerModal';
 
 interface MainMenuProps {
   onStartGame: (mode: GameMode, forest: ForestType, difficulty: Difficulty) => void;
@@ -20,8 +21,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
   const [difficulty, setDifficulty] = useState<Difficulty>('realism');
   const [isMuted, setIsMuted] = useState<boolean>(soundEngine.getMuted());
 
-  // Tactical Developer Manual State
+  // Tactical Developer Manual & Mod Manager State
   const [isManualOpen, setIsManualOpen] = useState<boolean>(false);
+  const [isModManagerOpen, setIsModManagerOpen] = useState<boolean>(false);
   const [isCinematicCatalogOpen, setIsCinematicCatalogOpen] = useState<boolean>(false);
   const [manualTab, setManualTab] = useState<'movement' | 'gunplay' | 'blueprints' | 'feedback'>('movement');
   const [engineSelection, setEngineSelection] = useState<'unity' | 'ue5' | 'godot'>('unity');
@@ -110,6 +112,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
               <Film className="w-3.5 h-3.5 text-red-500 animate-pulse" />
               <span className="hidden sm:inline">CINEMATIC CAMPAIGN</span>
               <span className="sm:hidden">CAMPAIGN</span>
+            </button>
+
+            <button
+              onClick={() => { soundEngine.playMechanicalClick(0.6, 1200); setIsModManagerOpen(true); }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 border border-amber-600/60 hover:border-amber-500 rounded text-[10px] font-extrabold text-amber-300 tracking-wider transition-colors shadow-md"
+            >
+              <Cpu className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="hidden sm:inline">MOD MANAGER & IMPORTER</span>
+              <span className="sm:hidden">MODS</span>
             </button>
 
             <button
@@ -925,6 +936,11 @@ Disable_Light_After_Frame(0.05f);`}
 
           </div>
         </div>
+      )}
+
+      {/* MOD MANAGER MODAL */}
+      {isModManagerOpen && (
+        <ModManagerModal onClose={() => setIsModManagerOpen(false)} />
       )}
 
     </div>

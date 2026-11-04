@@ -14,6 +14,8 @@ import { MultiplayerLobbyModal } from './components/MultiplayerLobbyModal';
 import { MultiplayerRoom } from './types/multiplayer';
 import { HumanCharacterId } from './game/characterMesh';
 import { networkClient } from './game/multiplayer/NetworkClient';
+import { ModManagerModal } from './components/ModManagerModal';
+import { ModManager } from './game/modManager';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -63,6 +65,7 @@ export default function App() {
   const [isVictory, setIsVictory] = useState<boolean>(false);
 
   const [isSandboxOpen, setIsSandboxOpen] = useState<boolean>(false);
+  const [isModManagerOpen, setIsModManagerOpen] = useState<boolean>(false);
   const [fpsConfig, setFpsConfig] = useState<FPSConfig>({
     mouseSensitivity: 0.0022,
     baseSpeed: 6.0,
@@ -361,6 +364,7 @@ export default function App() {
           onMoveRight={(val) => engineRef.current?.setMoveRight(val)}
           onUnlockPointer={() => canvasContainerRef.current?.requestPointerLock()}
           onOpenSandbox={handleOpenSandbox}
+          onOpenModManager={() => setIsModManagerOpen(true)}
           isMultiplayer={isMultiplayerActive}
           downedTeammateName={engineRef.current?.getNearbyDownedTeammate()?.name || null}
           onRevive={() => engineRef.current?.interact()}
@@ -374,6 +378,24 @@ export default function App() {
           config={fpsConfig}
           onChange={handleSandboxConfigChange}
           onClose={handleCloseSandbox}
+        />
+      )}
+
+      {/* 4.6 MOD MANAGER MODAL */}
+      {isModManagerOpen && (
+        <ModManagerModal 
+          onClose={() => setIsModManagerOpen(false)}
+          onModsUpdated={() => {
+            // Refresh weapons when mods updated in-game
+            if (engineRef.current) {
+              const activeMods = ModManager.getActiveModWeapons();
+              activeMods.forEach((m: Weapon) => {
+                if (!engineRef.current?.availableWeapons.some(w => w.id === m.id)) {
+                  engineRef.current?.availableWeapons.push(m);
+                }
+              });
+            }
+          }}
         />
       )}
 

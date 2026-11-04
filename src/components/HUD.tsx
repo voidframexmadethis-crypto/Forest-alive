@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlayerStats, Weapon } from '../types/game';
-import { Shield, Zap, Crosshair, Radio, Flashlight, Target, MoveUp, MoveDown, MoveLeft, MoveRight, RotateCw, Sliders, Heart } from 'lucide-react';
+import { Shield, Zap, Crosshair, Radio, Flashlight, Target, MoveUp, MoveDown, MoveLeft, MoveRight, RotateCw, Sliders, Heart, Cpu } from 'lucide-react';
 
 interface HUDProps {
   stats: PlayerStats;
@@ -18,6 +18,7 @@ interface HUDProps {
   onMoveRight: (val: boolean) => void;
   onUnlockPointer: () => void;
   onOpenSandbox?: () => void;
+  onOpenModManager?: () => void;
   isMultiplayer?: boolean;
   downedTeammateName?: string | null;
   onRevive?: () => void;
@@ -40,6 +41,7 @@ export const HUD: React.FC<HUDProps> = ({
   onMoveRight,
   onUnlockPointer,
   onOpenSandbox,
+  onOpenModManager,
   isMultiplayer,
   downedTeammateName,
   onRevive,
@@ -141,6 +143,16 @@ export const HUD: React.FC<HUDProps> = ({
               CAPTURE LOCK
             </button>
           </div>
+        )}
+
+        {onOpenModManager && (
+          <button 
+            onClick={onOpenModManager}
+            className="px-4 py-2.5 bg-neutral-900/90 border border-amber-500/60 hover:border-amber-400 rounded-xl text-[11px] font-extrabold font-['Chakra_Petch'] tracking-widest text-amber-300 hover:text-white flex items-center gap-2 shadow-xl hover:shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all cursor-pointer"
+          >
+            <Cpu className="w-4 h-4 text-amber-400 animate-pulse" />
+            📥 MODS & FILE IMPORTER
+          </button>
         )}
 
         {onOpenSandbox && (

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Creature, CreatureType, ForestType, GameMode, PlayerStats, Weapon, WeaponType } from '../types/game';
 import { CREATURE_CONFIGS } from './creatures';
 import { WEAPONS_DATABASE } from './weapons';
+import { ModManager } from './modManager';
 import { soundEngine } from './audio';
 import { AssetManager } from './assets/AssetManager';
 import { CreatureVisualController } from './visuals/CreatureVisualController';
@@ -279,7 +280,17 @@ export class GameEngine {
         { ...WEAPONS_DATABASE.minigun },
         { ...WEAPONS_DATABASE.grenade }
       ];
-      this.currentWeapon = { ...WEAPONS_DATABASE.fast_guy };
+    }
+
+    // Load active imported gun mods into player loadouts
+    const modWeapons = ModManager.getActiveModWeapons();
+    if (modWeapons.length > 0) {
+      modWeapons.forEach((modGun) => {
+        if (!this.availableWeapons.some(w => w.id === modGun.id)) {
+          this.availableWeapons.push(modGun);
+          this.stats.unlockedWeapons += `,${modGun.id}`;
+        }
+      });
     }
 
     // Director
@@ -1079,6 +1090,23 @@ export class GameEngine {
 
       gunGroup.add(body, gasChamber, nozzle);
       gunGroup.position.set(0.22, -0.2, -0.42);
+    } else if ((this.currentWeapon as any).isCustomMod) {
+      // CUSTOM IMPORTED GUN MOD: Render custom mod gun chassis with custom color glow & energy core
+      const hexStr = (this.currentWeapon as any).colorHex || '#ffaa00';
+      const hexColor = parseInt(hexStr.replace('#', '0x'), 16) || 0xffaa00;
+      const modMat = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.3, metalness: 0.8 });
+      const glowMat = new THREE.MeshBasicMaterial({ color: hexColor });
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.55), modMat);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.45, 12), modMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.02, -0.4);
+
+      const core = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 8, 16), glowMat);
+      core.position.set(0, 0.02, -0.15);
+
+      gunGroup.add(body, barrel, core);
+      gunGroup.position.set(0.22, -0.2, -0.45);
     } else {
       // Minigun
       const barrels = new THREE.Group();
