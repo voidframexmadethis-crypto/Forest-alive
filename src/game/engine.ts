@@ -1261,7 +1261,12 @@ export class GameEngine {
       if (type === 'zombie' || type === 'striker_zombie') {
         creature.aiController = new ZombieAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
       } else if (type === 'skinwalker') {
-        creature.aiController = new SkinwalkerAI(creature, this.playerPos, () => this.triggerSkinwalkerJumpScare(creature));
+        creature.aiController = new SkinwalkerAI(
+          creature,
+          this.playerPos,
+          () => this.triggerSkinwalkerJumpScare(creature),
+          (msg) => this.callbacks.onGameEvent(msg)
+        );
       } else if (type === 'double_tank') {
         creature.aiController = new DoubleTankAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
       } else if (type === 'jockey_9tentacles') {

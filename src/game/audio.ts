@@ -1402,6 +1402,84 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 1.2);
   }
+
+  public playSkinwalkerKnock() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    [0, 0.18].forEach(t => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(120, now + t);
+      osc.frequency.exponentialRampToValueAtTime(30, now + t + 0.12);
+      gain.gain.setValueAtTime(0.9, now + t);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + t + 0.12);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(now + t);
+      osc.stop(now + t + 0.12);
+    });
+  }
+
+  public playSkinwalkerScratch() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    const buf = this.createNoiseBuffer(0.4);
+    if (buf) {
+      noise.buffer = buf;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(3500, now);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.6, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      noise.start(now);
+    }
+  }
+
+  public playSkinwalkerMimicry() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(450, now);
+    osc.frequency.linearRampToValueAtTime(320, now + 0.8);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.8);
+  }
+
+  public playCursePowderSound() {
+    this.init();
+    if (!this.ctx || !this.masterGain || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    const buf = this.createNoiseBuffer(0.9);
+    if (buf) {
+      noise.buffer = buf;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1200, now);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.7, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      noise.start(now);
+    }
+  }
 }
 
 export const soundEngine = new SoundEngine();
