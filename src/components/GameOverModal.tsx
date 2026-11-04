@@ -17,7 +17,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onReturnMenu
 }) => {
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-6 text-white font-['Plus_Jakarta_Sans'] select-none">
+    <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-6 text-white font-['Plus_Jakarta_Sans'] select-none">
       <div className="max-w-xl w-full bg-neutral-950 border border-neutral-800 rounded-2xl p-8 space-y-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] text-center">
         
         {/* Title Icon */}

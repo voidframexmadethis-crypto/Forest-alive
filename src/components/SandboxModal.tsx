@@ -1188,7 +1188,7 @@ private:
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 font-['Plus_Jakarta_Sans'] text-white">
+    <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 font-['Plus_Jakarta_Sans'] text-white">
       <div className="max-w-6xl w-full h-[90vh] bg-neutral-950 border border-neutral-800 rounded-2xl flex flex-col overflow-hidden shadow-[0_0_60px_rgba(220,38,38,0.35)]">
         
         {/* Header bar */}
@@ -1196,11 +1196,12 @@ private:
           <div className="flex items-center gap-3">
             <Sliders className="w-6 h-6 text-red-500 animate-pulse" />
             <div>
-              <h3 className="text-lg md:text-xl font-extrabold font-['Chakra_Petch'] tracking-wide uppercase flex items-center gap-2">
-                FPS Sandbox & 3D Gameplay Code Laboratory
+              <h3 className="text-sm md:text-xl font-extrabold font-['Chakra_Petch'] tracking-wide uppercase flex items-center gap-2">
+                <span className="hidden xs:inline">FPS Sandbox & 3D Code Lab</span>
+                <span className="xs:hidden">FPS SANDBOX</span>
               </h3>
-              <p className="text-[11px] text-neutral-400 font-mono uppercase">
-                Tweak Call of Duty controller physics live and export optimized engine scripts
+              <p className="text-[10px] text-neutral-400 font-mono uppercase hidden sm:block">
+                Tweak Call of Duty controller physics live
               </p>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Tv, Crosshair, ShieldAlert, Sparkles, LogOut, Radio, Wrench } from 'lucide-react';
+import { Tv, Crosshair, ShieldAlert, Sparkles, LogOut, Radio, Wrench, Heart } from 'lucide-react';
 import { soundEngine } from '../game/audio';
+import { KatrinaSafehouse } from './KatrinaSafehouse';
 
 interface SafehouseUIProps {
   onExitSafehouse: () => void;
@@ -15,6 +16,8 @@ export const SafehouseUI: React.FC<SafehouseUIProps> = ({
 }) => {
   const [restSecondsLeft, setRestSecondsLeft] = useState<number>(45);
   const [tvChannel, setTvChannel] = useState<number>(1);
+  const [showKatrina, setShowKatrina] = useState<boolean>(false);
+  const [isPostLabor, setIsPostLabor] = useState<boolean>(false); // This would be managed by global game state/story flags
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -30,117 +33,138 @@ export const SafehouseUI: React.FC<SafehouseUIProps> = ({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/90 backdrop-blur-md text-white flex flex-col justify-between p-8 font-['Plus_Jakarta_Sans'] select-none">
+    <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-md text-white flex flex-col justify-between p-6 xs:p-8 font-['Plus_Jakarta_Sans'] select-none overflow-y-auto">
       
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-800 pb-4 gap-4">
         <div className="flex items-center gap-3">
-          <ShieldAlert className="w-8 h-8 text-emerald-500 animate-pulse" />
+          <ShieldAlert className="w-6 h-6 xs:w-8 xs:h-8 text-emerald-500 animate-pulse" />
           <div>
-            <h2 className="text-2xl font-bold font-['Chakra_Petch'] text-emerald-400">
-              SAFEHOUSE FORTIFIED OUTPOST
+            <h2 className="text-xl xs:text-2xl font-bold font-['Chakra_Petch'] text-emerald-400">
+              SAFEHOUSE OUTPOST
             </h2>
-            <p className="text-xs text-neutral-400 font-mono">
-              SECURE ZONE · REST & WEAPON BENCH · OUTLOOK SNIPER BUREAU
+            <p className="text-[9px] xs:text-xs text-neutral-400 font-mono uppercase">
+              Secure Zone · Weapons · Outlook
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-neutral-900 border border-neutral-800 px-4 py-2 rounded-xl">
-          <Radio className="w-4 h-4 text-amber-400 animate-spin" />
-          <span className="text-xs font-mono text-neutral-300">
-            NEXT HORDE INVASION IN: <b className="text-red-500 font-['Chakra_Petch'] text-base ml-1">{restSecondsLeft}s</b>
+        <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+          <Radio className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+          <span className="text-[10px] font-mono text-neutral-300">
+            NEXT HORDE: <b className="text-red-500 font-['Chakra_Petch'] text-sm ml-1">{restSecondsLeft}s</b>
           </span>
         </div>
       </div>
 
       {/* Main Grid: TV Broadcast & Gun Bureau Slot */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
+      <div className="grid grid-cols-1 gap-6 my-6">
         
-        {/* TV CRT Broadcast (6 Cols) */}
-        <div className="lg:col-span-6 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 relative overflow-hidden group">
+        {/* TV CRT Broadcast */}
+        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 relative overflow-hidden group">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold font-['Chakra_Petch'] text-neutral-400 flex items-center gap-2">
-              <Tv className="w-4 h-4 text-emerald-500" /> SURVIVOR EMERGENCY BROADCAST CH-0{tvChannel}
+            <span className="text-[10px] font-bold font-['Chakra_Petch'] text-neutral-400 flex items-center gap-2">
+              <Tv className="w-3.5 h-3.5 text-emerald-500" /> BROADCAST CH-0{tvChannel}
             </span>
             <button 
               onClick={() => { setTvChannel((prev) => (prev % 3) + 1); soundEngine.playMechanicalClick(); }}
-              className="px-2.5 py-1 bg-neutral-900 border border-neutral-700 hover:border-emerald-500 text-[11px] rounded font-mono"
+              className="px-2 py-0.5 bg-neutral-900 border border-neutral-700 hover:border-emerald-500 text-[9px] rounded font-mono"
             >
-              SWITCH CHANNEL
+              SWITCH
             </button>
           </div>
 
-          <div className="relative rounded-xl overflow-hidden border border-neutral-800 aspect-video">
+          <div className="relative rounded-xl overflow-hidden border border-neutral-800 aspect-video max-h-48 mx-auto">
             <img 
               src="/src/assets/images/safehouse_tv_broadcast_1790921673743.jpg" 
               alt="Safehouse TV" 
               className="w-full h-full object-cover filter contrast-125 saturate-150"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 pointer-events-none" />
-            <div className="absolute bottom-3 left-3 right-3 text-xs font-mono text-red-400 bg-black/80 p-2 rounded border border-red-900/50 animate-pulse">
-              [EMERGENCY BROADCAST]: Skinwalker horde breaches reported in sector 4. Double tanks sighted near perimeter!
+            <div className="absolute bottom-2 left-2 right-2 text-[9px] font-mono text-red-400 bg-black/80 p-1.5 rounded border border-red-900/50 animate-pulse">
+              [STATIC]: Skinwalker breaches detected...
             </div>
           </div>
         </div>
 
-        {/* Safehouse Control Actions (6 Cols) */}
-        <div className="lg:col-span-6 space-y-4">
+        {/* Safehouse Control Actions */}
+        <div className="space-y-3">
           
           {/* Telescope Sniper Bureau Button */}
           <button
             onClick={() => { soundEngine.playMechanicalClick(); onEnterTelescopeMode(); }}
-            className="w-full p-5 bg-gradient-to-r from-neutral-900 via-neutral-950 to-neutral-900 border border-red-800 hover:border-red-500 rounded-2xl transition-all group flex items-center justify-between text-left shadow-lg"
+            className="w-full p-4 bg-gradient-to-r from-neutral-900 via-neutral-950 to-neutral-900 border border-red-800 hover:border-red-500 rounded-xl transition-all group flex items-center gap-4 text-left shadow-lg"
           >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-red-950/60 border border-red-700/60 rounded-xl group-hover:scale-110 transition-transform">
-                <Crosshair className="w-7 h-7 text-red-500" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold font-['Chakra_Petch'] text-white">
-                  TELESCOPE WINDOW SNIPER SLOT
-                </h3>
-                <p className="text-xs text-neutral-400 mt-1">
-                  Aim high-powered telescope rifle through fortified window to pick off incoming Striker Zombies before they reach farms.
-                </p>
-              </div>
+            <div className="p-2.5 bg-red-950/60 border border-red-700/60 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <Crosshair className="w-5 h-5 xs:w-6 xs:h-6 text-red-500" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm xs:text-base font-bold font-['Chakra_Petch'] text-white truncate">
+                WINDOW SNIPER SLOT
+              </h3>
+              <p className="text-[10px] text-neutral-500 truncate">
+                Pick off incoming zombies.
+              </p>
             </div>
           </button>
 
           {/* Weapon Bench Cutscene Button */}
           <button
             onClick={() => { soundEngine.playMechanicalClick(); onTriggerWeaponPrepCutscene(); }}
-            className="w-full p-5 bg-gradient-to-r from-neutral-900 via-neutral-950 to-neutral-900 border border-neutral-800 hover:border-emerald-500 rounded-2xl transition-all group flex items-center justify-between text-left shadow-lg"
+            className="w-full p-4 bg-gradient-to-r from-neutral-900 via-neutral-950 to-neutral-900 border border-neutral-800 hover:border-emerald-500 rounded-xl transition-all group flex items-center gap-4 text-left shadow-lg"
           >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-emerald-950/60 border border-emerald-700/60 rounded-xl group-hover:scale-110 transition-transform">
-                <Wrench className="w-7 h-7 text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold font-['Chakra_Petch'] text-white">
-                  PREPARE WEAPONS BENCH [CUTSCENE]
-                </h3>
-                <p className="text-xs text-neutral-400 mt-1">
-                  Rack bolts, reload magazines, and view high-definition 3D weapon inspection sequence.
-                </p>
-              </div>
+            <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <Wrench className="w-5 h-5 xs:w-6 xs:h-6 text-emerald-400" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm xs:text-base font-bold font-['Chakra_Petch'] text-white truncate">
+                WEAPONS BENCH
+              </h3>
+              <p className="text-[10px] text-neutral-500 truncate">
+                Inspect tactical gear.
+              </p>
+            </div>
+          </button>
+
+          {/* Interaction with Katrina */}
+          <button
+            onClick={() => { soundEngine.playMechanicalClick(); setShowKatrina(true); }}
+            className="w-full p-4 bg-gradient-to-r from-emerald-950/80 via-emerald-900/50 to-neutral-950/90 border border-emerald-800 hover:border-emerald-500 rounded-xl transition-all group flex items-center gap-4 text-left shadow-lg"
+          >
+            <div className="p-2.5 bg-emerald-950/60 border border-emerald-700/60 rounded-lg group-hover:scale-110 transition-transform shrink-0">
+              <Heart className="w-5 h-5 xs:w-6 xs:h-6 text-emerald-400" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm xs:text-base font-bold font-['Chakra_Petch'] text-white truncate">
+                VISIT KATRINA
+              </h3>
+              <p className="text-[10px] text-neutral-500 truncate">
+                Check on her & the baby.
+              </p>
             </div>
           </button>
 
           {/* Exit Safehouse */}
           <button
             onClick={() => { soundEngine.playMechanicalClick(); onExitSafehouse(); }}
-            className="w-full py-4 bg-red-700 hover:bg-red-800 text-white font-extrabold text-sm tracking-wider rounded-xl font-['Chakra_Petch'] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(220,38,38,0.4)]"
+            className="w-full py-3 bg-red-700 hover:bg-red-800 text-white font-extrabold text-xs tracking-wider rounded-xl font-['Chakra_Petch'] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(220,38,38,0.4)]"
           >
-            <LogOut className="w-5 h-5" /> STEP OUT OF SAFEHOUSE INTO THE NIGHT
+            <LogOut className="w-4 h-4" /> STEP INTO THE NIGHT
           </button>
+
+          {showKatrina && (
+            <KatrinaSafehouse 
+              isPostLabor={isPostLabor} 
+              onClose={() => setShowKatrina(false)} 
+            />
+          )}
 
         </div>
       </div>
 
       {/* Footer */}
-      <div className="border-t border-neutral-800 pt-3 text-center text-xs text-neutral-500 font-mono">
-        SAFEHOUSE STATUS: HEAVY STEEL DOOR LOCKED · REINFORCED BARRIER ACTIVE
+      <div className="border-t border-neutral-800 pt-3 text-center text-[9px] text-neutral-600 font-mono">
+        SAFEHOUSE STATUS: REINFORCED BARRIER ACTIVE
       </div>
     </div>
   );

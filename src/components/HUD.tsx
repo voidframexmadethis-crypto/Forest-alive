@@ -18,6 +18,10 @@ interface HUDProps {
   onMoveRight: (val: boolean) => void;
   onUnlockPointer: () => void;
   onOpenSandbox?: () => void;
+  isMultiplayer?: boolean;
+  downedTeammateName?: string | null;
+  onRevive?: () => void;
+  onLeaveMultiplayer?: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -35,10 +39,14 @@ export const HUD: React.FC<HUDProps> = ({
   onMoveLeft,
   onMoveRight,
   onUnlockPointer,
-  onOpenSandbox
+  onOpenSandbox,
+  isMultiplayer,
+  downedTeammateName,
+  onRevive,
+  onLeaveMultiplayer
 }) => {
   return (
-    <div className="fixed inset-0 pointer-events-none z-20 select-none font-['Plus_Jakarta_Sans']">
+    <div className="absolute inset-0 pointer-events-none z-20 select-none font-['Plus_Jakarta_Sans']">
       
       {/* WINGED FROST SKINWALKER ICE FROZEN OVERLAY (Visual Frost Frame) */}
       {stats.iceFrozenTimer !== undefined && stats.iceFrozenTimer > 0 && (
@@ -192,7 +200,7 @@ export const HUD: React.FC<HUDProps> = ({
       )}
 
       {/* 9. BOTTOM LEFT: VITAL STATS & ON-SCREEN WALKING CONTROLS */}
-      <div className="absolute bottom-6 left-6 flex flex-col gap-3 pointer-events-auto">
+      <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 pointer-events-auto">
         {/* Active Stance Badge */}
         {(stats.isCrouched || stats.isProne || stats.isSliding) && (
           <div className="bg-red-950/90 border border-red-500/60 px-3 py-1.5 rounded-lg font-['Chakra_Petch'] text-[10px] font-bold text-red-200 tracking-wider animate-pulse flex items-center gap-2 w-max shadow-lg">
@@ -201,240 +209,223 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         )}
 
-        {/* On-screen Walking Panel (Strictly Walk, Shoot, Reload!) */}
-        <div className="bg-neutral-950/95 border border-neutral-800/80 p-4 rounded-xl flex flex-col items-center gap-2 w-max shadow-2xl">
-          <span className="text-[10px] font-bold tracking-widest text-neutral-400 font-['Chakra_Petch'] mb-1">WALK MOVEMENT</span>
-          
-          <button
-            onMouseDown={() => onMoveForward(true)}
-            onMouseUp={() => onMoveForward(false)}
-            onMouseLeave={() => onMoveForward(false)}
-            onTouchStart={() => onMoveForward(true)}
-            onTouchEnd={() => onMoveForward(false)}
-            className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-            title="Walk Forward"
-          >
-            <MoveUp className="w-5 h-5 text-white" />
-          </button>
-
-          <div className="flex gap-2">
+        <div className="flex items-end justify-between gap-2">
+          {/* On-screen Walking Panel */}
+          <div className="bg-neutral-950/95 border border-neutral-800/80 p-3 rounded-xl flex flex-col items-center gap-2 w-max shadow-2xl scale-90 origin-bottom-left">
+            <span className="text-[9px] font-bold tracking-widest text-neutral-400 font-['Chakra_Petch'] mb-1 uppercase">Movement</span>
+            
             <button
-              onMouseDown={() => onMoveLeft(true)}
-              onMouseUp={() => onMoveLeft(false)}
-              onMouseLeave={() => onMoveLeft(false)}
-              onTouchStart={() => onMoveLeft(true)}
-              onTouchEnd={() => onMoveLeft(false)}
+              onMouseDown={() => onMoveForward(true)}
+              onMouseUp={() => onMoveForward(false)}
+              onMouseLeave={() => onMoveForward(false)}
+              onTouchStart={() => onMoveForward(true)}
+              onTouchEnd={() => onMoveForward(false)}
               className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              title="Walk Left"
             >
-              <MoveLeft className="w-5 h-5 text-white" />
+              <MoveUp className="w-5 h-5 text-white" />
             </button>
 
-            <button
-              onMouseDown={() => onMoveBackward(true)}
-              onMouseUp={() => onMoveBackward(false)}
-              onMouseLeave={() => onMoveBackward(false)}
-              onTouchStart={() => onMoveBackward(true)}
-              onTouchEnd={() => onMoveBackward(false)}
-              className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              title="Walk Backward"
-            >
-              <MoveDown className="w-5 h-5 text-white" />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onMouseDown={() => onMoveLeft(true)}
+                onMouseUp={() => onMoveLeft(false)}
+                onMouseLeave={() => onMoveLeft(false)}
+                onTouchStart={() => onMoveLeft(true)}
+                onTouchEnd={() => onMoveLeft(false)}
+                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
+              >
+                <MoveLeft className="w-5 h-5 text-white" />
+              </button>
 
-            <button
-              onMouseDown={() => onMoveRight(true)}
-              onMouseUp={() => onMoveRight(false)}
-              onMouseLeave={() => onMoveRight(false)}
-              onTouchStart={() => onMoveRight(true)}
-              onTouchEnd={() => onMoveRight(false)}
-              className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              title="Walk Right"
-            >
-              <MoveRight className="w-5 h-5 text-white" />
-            </button>
+              <button
+                onMouseDown={() => onMoveBackward(true)}
+                onMouseUp={() => onMoveBackward(false)}
+                onMouseLeave={() => onMoveBackward(false)}
+                onTouchStart={() => onMoveBackward(true)}
+                onTouchEnd={() => onMoveBackward(false)}
+                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
+              >
+                <MoveDown className="w-5 h-5 text-white" />
+              </button>
+
+              <button
+                onMouseDown={() => onMoveRight(true)}
+                onMouseUp={() => onMoveRight(false)}
+                onMouseLeave={() => onMoveRight(false)}
+                onTouchStart={() => onMoveRight(true)}
+                onTouchEnd={() => onMoveRight(false)}
+                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
+              >
+                <MoveRight className="w-5 h-5 text-white" />
+              </button>
+            </div>
           </div>
 
-          {/* Tactical keys reminder */}
-          <div className="mt-2 text-[9px] text-neutral-400 font-mono flex flex-col gap-0.5 border-t border-neutral-900 pt-2 text-left w-full">
-            <div>• <b className="text-white">C / CTRL:</b> Toggle Crouch</div>
-            <div>• <b className="text-white">C (during Sprint):</b> Slide</div>
-            <div>• <b className="text-white">Z key:</b> Dolphin Dive</div>
+          {/* Action Buttons (Shoot/Reload) */}
+          <div className="flex flex-col gap-2 items-end scale-90 origin-bottom-right">
+            <button
+              onClick={onReload}
+              className="px-4 py-2.5 bg-amber-950/80 border border-amber-600 hover:border-amber-400 text-amber-400 rounded-xl font-bold text-[10px] tracking-wider font-['Chakra_Petch'] flex items-center gap-2 transition-all active:scale-95 shadow-md"
+            >
+              <RotateCw className="w-4 h-4" /> RELOAD
+            </button>
+
+            <button
+              onClick={onShoot}
+              className="px-6 py-4 bg-red-700 hover:bg-red-600 border border-red-500 rounded-xl font-extrabold text-xs tracking-widest font-['Chakra_Petch'] text-white flex items-center gap-2 transition-all active:scale-95 shadow-lg"
+            >
+              <Crosshair className="w-5 h-5" /> SHOOT
+            </button>
           </div>
         </div>
 
-        {/* 18 Hearts Health Display Card in Bottom Left Corner */}
-        <div className="bg-black/80 backdrop-blur-md border border-red-900/60 p-3.5 rounded-xl w-72 shadow-2xl space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold font-['Chakra_Petch']">
-            <span className="text-red-400 flex items-center gap-1.5 tracking-wider">
-              <Heart className="w-4 h-4 fill-red-500 text-red-500 animate-pulse" /> VITAL HEALTH (18 HEARTS)
-            </span>
-            <span className={stats.health < 30 ? 'text-red-500 font-extrabold animate-pulse' : 'text-white'}>
-              {Math.round(stats.health)}%
-            </span>
+        {/* 18 Hearts Health & Stamina combined compact card */}
+        <div className="flex flex-col gap-2 bg-black/80 backdrop-blur-md border border-neutral-800 p-3 rounded-xl shadow-2xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 fill-red-500 text-red-500 animate-pulse" />
+              <span className="text-[10px] font-bold font-['Chakra_Petch'] text-red-400 uppercase tracking-widest">Health</span>
+            </div>
+            <span className="text-[10px] font-mono text-white">{Math.round(stats.health)}%</span>
           </div>
-
-          <div className="text-[9px] text-amber-400/90 font-mono tracking-tight text-left">
-            ⏳ SLOTH HEALTH DECAY: 18 HEARTS DRAIN OVER 3 TO 7 HOURS
-          </div>
-
-          {/* 18 Hearts Grid (2 rows of 9 hearts) */}
-          <div className="grid grid-cols-9 gap-1.5 pt-0.5 pb-0.5">
+          
+          <div className="grid grid-cols-9 gap-1 pb-1">
             {Array.from({ length: 18 }).map((_, i) => {
               const heartValue = (stats.health / stats.maxHealth) * 18;
               const isFull = heartValue >= i + 0.85;
               const isHalf = heartValue > i + 0.15 && heartValue < i + 0.85;
-
               return (
                 <div key={i} className="flex items-center justify-center">
                   {isFull ? (
-                    <Heart className="w-4 h-4 fill-red-500 text-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.9)] animate-pulse" />
+                    <Heart className="w-3 h-3 fill-red-500 text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]" />
                   ) : isHalf ? (
-                    <Heart className="w-4 h-4 fill-red-800 text-red-500 opacity-80" />
+                    <Heart className="w-3 h-3 fill-red-800 text-red-500 opacity-80" />
                   ) : (
-                    <Heart className="w-4 h-4 text-neutral-800 fill-neutral-950" />
+                    <Heart className="w-3 h-3 text-neutral-800 fill-neutral-950" />
                   )}
                 </div>
               );
             })}
           </div>
 
-          <div className="w-full bg-neutral-900 h-1.5 rounded-full overflow-hidden border border-neutral-800">
-            <div 
-              className={`h-full transition-all duration-300 ${stats.health < 30 ? 'bg-red-600' : 'bg-emerald-500'}`}
-              style={{ width: `${Math.max(0, (stats.health / stats.maxHealth) * 100)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Stamina Bar */}
-        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-neutral-800 p-3 rounded-xl w-64 shadow-lg">
-          <Zap className="w-6 h-6 text-amber-500 shrink-0" />
-          <div className="flex-1">
-            <div className="flex justify-between text-xs font-bold font-['Chakra_Petch'] mb-1">
-              <span className="text-neutral-400">STAMINA / FATIGUE</span>
-              <span className="text-white">{Math.round(stats.stamina)}%</span>
-            </div>
-            <div className="w-full bg-neutral-900 h-2 rounded-full overflow-hidden border border-neutral-800">
+          <div className="flex items-center gap-3 border-t border-neutral-800 pt-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <div className="flex-1 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
               <div 
                 className="h-full bg-amber-500 transition-all duration-150"
                 style={{ width: `${(stats.stamina / stats.maxStamina) * 100}%` }}
               />
             </div>
+            <span className="text-[9px] font-mono text-amber-500">{Math.round(stats.stamina)}%</span>
           </div>
         </div>
-      </div>
 
-      {/* 10. BOTTOM RIGHT: SHOOT & RELOAD PANEL (Explicit mechanical controls requested) */}
-      <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
-        {/* On-screen Shoot & Reload Command deck */}
-        <div className="bg-neutral-950/95 border border-neutral-800 p-4 rounded-xl flex items-center gap-4 shadow-2xl">
-          {/* Reload Weapon Button */}
-          <button
-            onClick={onReload}
-            className="px-5 py-3 bg-amber-950/80 border border-amber-600 hover:border-amber-400 text-amber-400 rounded-xl font-bold text-xs tracking-wider font-['Chakra_Petch'] flex items-center gap-2 transition-all select-none active:scale-95 shadow-md"
-          >
-            <RotateCw className="w-4 h-4" /> RELOAD WEAPON
-          </button>
-
-          {/* Shoot Weapon Button */}
-          <button
-            onClick={onShoot}
-            className="px-8 py-4 bg-red-700 hover:bg-red-600 border border-red-500 rounded-xl font-extrabold text-sm tracking-widest font-['Chakra_Petch'] text-white flex items-center gap-2 transition-all active:scale-95 shadow-lg animate-pulse"
-          >
-            <Crosshair className="w-5 h-5 animate-spin" /> SHOOT TARGET
-          </button>
-        </div>
-
-        {/* WEAPONS LOADOUT HUD BAR */}
+        {/* Weapons Loadout HUD Bar (Now scrollable if many weapons) */}
         {stats.unlockedWeapons && (
-          <div className="flex flex-wrap gap-2 justify-end w-full max-w-[480px] mb-2">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar max-w-full">
             {stats.unlockedWeapons.split(',').map((wId, i) => {
               const isActive = weapon.id === wId;
               const nameMap: Record<string, { label: string; icon: string }> = {
-                fast_guy: { label: 'THE FAST GUY', icon: '⚡' },
-                dragon_gun: { label: 'DRAGON GUN', icon: '🐉' },
-                whip: { label: 'CONTROL WHIP', icon: '🪢' },
-                underground_gun: { label: 'SEISMIC DRILLER', icon: '⛏️' },
-                m4a1: { label: 'M4A1 CARBINE', icon: '🔫' },
-                ak47: { label: 'AK-47 SOVIET', icon: '⚔️' },
-                shotgun: { label: 'REMINGTON 870', icon: '💥' },
-                sniper: { label: 'BARRETT .50', icon: '🎯' },
-                minigun: { label: 'M134 VULCAN', icon: '⚡' },
-                smoke_grenade: { label: 'SMOKE GRENADE', icon: '💨' },
-                grenade: { label: 'FRAG GRENADE', icon: '💣' }
+                fast_guy: { label: 'FAST', icon: '⚡' },
+                dragon_gun: { label: 'DRAGON', icon: '🐉' },
+                whip: { label: 'WHIP', icon: '🪢' },
+                underground_gun: { label: 'DRILL', icon: '⛏️' },
+                m4a1: { label: 'M4A1', icon: '🔫' },
+                ak47: { label: 'AK47', icon: '⚔️' },
+                shotgun: { label: '870', icon: '💥' },
+                sniper: { label: '.50', icon: '🎯' },
+                minigun: { label: 'M134', icon: '⚡' },
+                smoke_grenade: { label: 'SMOKE', icon: '💨' },
+                grenade: { label: 'FRAG', icon: '💣' }
               };
-              const meta = nameMap[wId] || { label: wId.toUpperCase(), icon: '🔫' };
+              const meta = nameMap[wId] || { label: wId.substring(0, 4).toUpperCase(), icon: '🔫' };
               return (
                 <button
                   key={wId}
                   onClick={() => onSwitchWeaponSlot?.(i)}
-                  className={`px-3 py-1.5 rounded-lg border font-mono text-[10px] font-bold tracking-wider transition-all select-none cursor-pointer active:scale-95 flex items-center gap-1.5 shadow-md ${
+                  className={`px-2 py-1 rounded-lg border font-mono text-[9px] font-bold tracking-tight transition-all select-none cursor-pointer flex items-center gap-1 shrink-0 ${
                     isActive 
-                      ? 'bg-red-950/95 border-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-105 ring-2 ring-red-500/50' 
-                      : 'bg-black/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                      ? 'bg-red-950/95 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.6)]' 
+                      : 'bg-black/80 border-neutral-800 text-neutral-400'
                   }`}
                 >
-                  <span className="w-4 h-4 rounded bg-neutral-900 border border-neutral-700 flex items-center justify-center text-[9px] text-amber-400 font-bold font-['Chakra_Petch']">
-                    {i + 1}
-                  </span>
-                  <span className="text-xs">{meta.icon}</span>
-                  <span className="font-['Chakra_Petch'] font-extrabold">{meta.label}</span>
+                  <span>{meta.icon}</span>
+                  <span className="font-['Chakra_Petch']">{meta.label}</span>
                 </button>
               );
             })}
           </div>
         )}
+      </div>
 
-        <div className="bg-black/70 backdrop-blur-md border border-red-900/40 p-4 rounded-xl text-right min-w-[200px] shadow-lg">
-          <div className="text-xs font-bold text-red-500 uppercase tracking-widest font-['Chakra_Petch']">
-            {weapon.name}
+      {/* DOWNED TEAMMATE PROXIMITY REVIVE BUTTON */}
+      {downedTeammateName && (
+        <div className="absolute bottom-40 left-1/2 -translate-x-1/2 pointer-events-auto z-40 animate-bounce">
+          <button
+            onClick={onRevive}
+            className="px-6 py-3 bg-red-600 hover:bg-red-500 border-2 border-yellow-300 text-white font-['Chakra_Petch'] font-black text-xs rounded-2xl shadow-[0_0_30px_rgba(239,68,68,0.8)] flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
+          >
+            <Heart className="w-5 h-5 fill-yellow-300 text-yellow-300 animate-pulse" />
+            <span>REVIVE {downedTeammateName.toUpperCase()} [E]</span>
+          </button>
+        </div>
+      )}
+
+      {/* 11. TOP HUD: TIMER, CO-OP STATUS & AMMO */}
+      <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+        {/* Left: Survival Timer & Co-op indicator */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="bg-black/70 backdrop-blur-md border border-neutral-800 p-2 rounded-xl text-right font-mono text-[10px]">
+            <div className="text-neutral-500 uppercase tracking-tighter">Time</div>
+            <div className="text-sm font-bold text-red-500 font-['Chakra_Petch'] leading-tight">
+              {Math.floor(stats.survivalSeconds / 60).toString().padStart(2, '0')}:{(stats.survivalSeconds % 60).toString().padStart(2, '0')}
+            </div>
           </div>
-          <div className="text-[10px] text-neutral-400 font-mono mb-2">{weapon.category}</div>
 
-          <div className="flex items-baseline justify-end gap-1 font-['Chakra_Petch']">
-            <span className={`text-4xl font-extrabold ${weapon.currentAmmo === 0 ? 'text-red-600 animate-pulse' : 'text-white'}`}>
-              {weapon.currentAmmo}
-            </span>
-            <span className="text-lg text-neutral-500 font-bold">/ {weapon.totalReserve}</span>
-          </div>
-
-          {isReloading && (
-            <div className="text-xs font-bold text-amber-400 font-mono animate-pulse mt-1">
-              RELOADING WEAPON...
+          {isMultiplayer && (
+            <div className="flex items-center gap-1.5">
+              <div className="bg-cyan-950/80 border border-cyan-500/70 px-2.5 py-1.5 rounded-xl font-mono text-[10px] text-cyan-200 flex items-center gap-1.5 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span className="font-['Chakra_Petch'] font-bold">CO-OP MATCH</span>
+              </div>
+              {onLeaveMultiplayer && (
+                <button
+                  onClick={onLeaveMultiplayer}
+                  className="bg-neutral-900/90 hover:bg-red-950/90 border border-neutral-700 hover:border-red-600 px-2 py-1.5 rounded-xl font-mono text-[9px] text-neutral-300 hover:text-red-300 transition-colors"
+                >
+                  LEAVE
+                </button>
+              )}
             </div>
           )}
         </div>
-      </div>
 
-      {/* 11. TOP RIGHT: TACTICAL RADAR & SURVIVAL TIMER */}
-      <div className="absolute top-6 right-6 flex flex-col items-end gap-2">
-        <div className="bg-black/70 backdrop-blur-md border border-neutral-800 p-3 rounded-xl text-right font-mono text-xs">
-          <div className="text-neutral-400">SURVIVAL TIME</div>
-          <div className="text-lg font-bold text-red-500 font-['Chakra_Petch']">
-            {Math.floor(stats.survivalSeconds / 60).toString().padStart(2, '0')}:{(stats.survivalSeconds % 60).toString().padStart(2, '0')}
+        {/* Ammo Display */}
+        <div className="bg-black/70 backdrop-blur-md border border-red-950 p-2 rounded-xl text-right min-w-[100px] pointer-events-auto">
+          <div className="text-[9px] font-bold text-red-500 uppercase tracking-widest font-['Chakra_Petch'] leading-tight">
+            {weapon.name}
           </div>
-          <div className="text-[11px] text-emerald-400 mt-1">KILLS: {stats.kills} | HEADSHOTS: {stats.headshots}</div>
+          <div className="flex items-baseline justify-end gap-0.5 font-['Chakra_Petch'] mt-0.5">
+            <span className={`text-2xl font-extrabold ${weapon.currentAmmo === 0 ? 'text-red-600 animate-pulse' : 'text-white'}`}>
+              {weapon.currentAmmo}
+            </span>
+            <span className="text-xs text-neutral-500 font-bold">/ {weapon.totalReserve}</span>
+          </div>
         </div>
       </div>
 
       {/* DEVELOPER DEBUG OVERLAY (Toggled via `~` KeyBackquote) */}
       {stats.isDebugActive && (
-        <div className="absolute top-20 right-6 bg-black/90 border border-emerald-500/60 p-3.5 rounded-xl font-mono text-[11px] text-emerald-400 w-80 shadow-2xl z-40">
-          <div className="font-bold text-xs text-emerald-300 font-['Chakra_Petch'] border-b border-emerald-800 pb-1 mb-2 flex justify-between items-center">
-            <span>🛠️ DEVELOPER AI & RIG DEBUG</span>
-            <span className="text-[9px] bg-emerald-950 px-1.5 py-0.5 rounded text-emerald-400 border border-emerald-600">LIVE</span>
+        <div className="absolute top-20 right-4 left-4 bg-black/95 border border-emerald-500/60 p-3 rounded-xl font-mono text-[9px] text-emerald-400 shadow-2xl z-40">
+          <div className="font-bold text-[10px] text-emerald-300 font-['Chakra_Petch'] border-b border-emerald-800 pb-1 mb-2 flex justify-between items-center uppercase tracking-widest">
+            <span>AI Rig Debug</span>
+            <span className="bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-600">LIVE</span>
           </div>
-          <div className="space-y-1">
-            <div><span className="text-neutral-400">Weapon Active:</span> <b className="text-white">{weapon.name}</b></div>
-            <div><span className="text-neutral-400">Two-Handed IK:</span> <b className="text-emerald-400">L_Hand & R_Hand Locked</b></div>
-            <div><span className="text-neutral-400">Director Phase:</span> <b className="text-amber-400 uppercase">{stats.directorState?.phase || 'QUIET'}</b></div>
-            <div><span className="text-neutral-400">Director Tension:</span> <b className="text-red-400">{Math.round(stats.directorState?.tension || 0)}%</b></div>
-            <div><span className="text-neutral-400">Panic Event Active:</span> <b className={stats.directorState?.panicActive ? 'text-red-500 animate-pulse' : 'text-neutral-500'}>{stats.directorState?.panicActive ? 'YES' : 'NO'}</b></div>
-            <div><span className="text-neutral-400">Skinwalker Mindscare:</span> <b className={stats.skinwalkerJumpScareActive ? 'text-purple-400 animate-pulse' : 'text-neutral-500'}>{stats.skinwalkerJumpScareActive ? 'ACTIVE' : 'IDLE'}</b></div>
-            <div className="text-[9px] text-neutral-500 border-t border-neutral-800 pt-1 mt-2">
-              Press [~] (Backquote) to hide debug overlay
-            </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div><span className="text-neutral-500">Weapon:</span> <b className="text-white">{weapon.name}</b></div>
+            <div><span className="text-neutral-500">Phase:</span> <b className="text-amber-400 uppercase">{stats.directorState?.phase || 'QUIET'}</b></div>
+            <div><span className="text-neutral-500">Tension:</span> <b className="text-red-400">{Math.round(stats.directorState?.tension || 0)}%</b></div>
+            <div><span className="text-neutral-500">Panic:</span> <b className={stats.directorState?.panicActive ? 'text-red-500' : 'text-neutral-500'}>{stats.directorState?.panicActive ? 'YES' : 'NO'}</b></div>
           </div>
         </div>
       )}

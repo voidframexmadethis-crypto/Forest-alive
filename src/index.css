@@ -1,1 +1,52 @@
 @import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-neutral-950;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.portrait-frame {
+  aspect-ratio: 9 / 19.5; /* Optimized for long modern phone screens */
+  max-height: 100dvh;
+  width: auto;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: black;
+}
+
+/* On actual portrait mobile devices, fill the screen */
+@media (orientation: portrait) {
+  .portrait-frame {
+    width: 100vw;
+    height: 100dvh;
+    aspect-ratio: auto;
+  }
+}
+
+.orientation-guard {
+  display: none;
+}
+
+/* Force portrait only message in landscape */
+@media (orientation: landscape) and (max-height: 600px) {
+  .portrait-frame {
+    display: none;
+  }
+  .orientation-guard {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: black;
+    color: white;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    font-family: 'Chakra Petch', sans-serif;
+  }
+}

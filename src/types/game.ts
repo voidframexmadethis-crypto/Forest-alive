@@ -4,7 +4,7 @@ export type ForestType = 'pine_dark' | 'red_mist' | 'dead_winter';
 
 export type Difficulty = 'veteran' | 'realism' | 'nightmare';
 
-export type GameState = 'menu' | 'intro_cutscene' | 'playing' | 'safehouse_rest' | 'telescope_mode' | 'tank_driving' | 'escape_cutscene' | 'game_over' | 'victory';
+export type GameState = 'menu' | 'opening_cinematic' | 'intro_cutscene' | 'playing' | 'safehouse_rest' | 'telescope_mode' | 'tank_driving' | 'escape_cutscene' | 'game_over' | 'victory';
 
 export type WeaponType = 
   | 'm4a1' 
@@ -114,6 +114,7 @@ export interface Creature {
   idleTimer?: number;
   mesh?: any; // Three.js Object3D reference
   visualController?: any; // CreatureVisualController reference
+  aiController?: any; // BaseEnemyAI class instance
 }
 
 export interface DirectorState {
@@ -155,6 +156,7 @@ export interface PlayerStats {
   unlockedWeapons: string;
   isDebugActive?: boolean;
   directorState?: DirectorState;
+  abilities?: string[];
 }
 
 export interface SafehouseState {

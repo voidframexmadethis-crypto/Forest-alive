@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MaterialProfileManager } from './assets/MaterialProfiles';
 
-export type HumanCharacterId = 'titan' | 'katrina' | 'lewis' | 'bill';
+export type HumanCharacterId = 'titan' | 'katrina' | 'natasha' | 'bill' | 'luis' | 'lewis';
 
 export interface CharacterMeshParts {
   group: THREE.Group;
@@ -21,19 +21,32 @@ export interface CharacterMeshParts {
 }
 
 export class CharacterMeshBuilder {
-  public static createHumanCharacter(id: HumanCharacterId): CharacterMeshParts {
+  public static createHumanCharacter(rawId: HumanCharacterId, isPregnant: boolean = false): CharacterMeshParts {
+    const id = rawId === 'lewis' ? 'luis' : rawId;
     const group = new THREE.Group();
     group.name = `Human_${id}`;
 
     // Standard materials
+    let skinColor = 0xd2997a;
+    if (id === 'katrina') skinColor = 0xe0a98b;
+    else if (id === 'natasha') skinColor = 0xf0c2a8;
+    else if (id === 'bill') skinColor = 0xc88f72;
+    else if (id === 'luis') skinColor = 0xc68a68;
+
     const skinMat = new THREE.MeshStandardMaterial({
-      color: id === 'katrina' ? 0xe0a98b : (id === 'bill' ? 0xc88f72 : 0xd2997a),
+      color: skinColor,
       roughness: 0.65,
       metalness: 0.05
     });
 
     const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xf5f5f5 });
-    const eyeIrisMat = new THREE.MeshBasicMaterial({ color: id === 'katrina' ? 0x2e6f40 : 0x2b4a6f });
+    let irisColor = 0x2b4a6f;
+    if (id === 'katrina') irisColor = 0x2e6f40;
+    else if (id === 'natasha') irisColor = 0x10b981; // Emerald green
+    else if (id === 'bill') irisColor = 0x475569;
+    else if (id === 'luis') irisColor = 0x78350f;
+
+    const eyeIrisMat = new THREE.MeshBasicMaterial({ color: irisColor });
 
     let hairMat: THREE.MeshStandardMaterial;
     let clothingTopMat: THREE.MeshStandardMaterial;
@@ -46,18 +59,24 @@ export class CharacterMeshBuilder {
       clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.85 }); // Red sweater
       clothingPantsMat = new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.9 }); // Dark black pants
       bootsMat = new THREE.MeshStandardMaterial({ color: 0x3b2416, roughness: 0.7 }); // Brown boots
-    } else if (id === 'lewis') {
-      // Lewis: Flannel canvas jacket, work jeans, work boots
-      hairMat = new THREE.MeshStandardMaterial({ color: 0x221a0f, roughness: 0.8 });
-      clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x2d4a3e, roughness: 0.8 }); // Canvas jacket
-      clothingPantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 }); // Denim jeans
-      bootsMat = new THREE.MeshStandardMaterial({ color: 0x291d18, roughness: 0.65 });
+    } else if (id === 'natasha') {
+      // Natasha: Elegant mountain estate heiress - dark violet tactical coat, gold trim, blonde bun, dark leggings
+      hairMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.65 }); // Golden blonde
+      clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x3b1d54, roughness: 0.75 }); // Royal violet coat
+      clothingPantsMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 }); // Fitted dark tactical trousers
+      bootsMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5 }); // Polished dark boots
     } else if (id === 'bill') {
-      // Bill: Olive field jacket, cap, cargo trousers
-      hairMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 }); // Salt & pepper gray
-      clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x3f4e35, roughness: 0.85 }); // Olive jacket
+      // Bill Lewis: Olive field jacket, hunter cap, cargo trousers, salt & pepper hair
+      hairMat = new THREE.MeshStandardMaterial({ color: 0x737373, roughness: 0.9 }); // Salt & pepper gray
+      clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x3f4e35, roughness: 0.85 }); // Olive field jacket
       clothingPantsMat = new THREE.MeshStandardMaterial({ color: 0x363025, roughness: 0.9 }); // Cargo trousers
       bootsMat = new THREE.MeshStandardMaterial({ color: 0x1f1915, roughness: 0.7 });
+    } else if (id === 'luis') {
+      // Luis: Flannel canvas welder jacket, work jeans, steel-toe boots
+      hairMat = new THREE.MeshStandardMaterial({ color: 0x1f1915, roughness: 0.85 });
+      clothingTopMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 }); // Flannel canvas jacket
+      clothingPantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 }); // Denim jeans
+      bootsMat = new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.65 });
     } else {
       // Titan (Default Main Protagonist): Tactical operative vest, black combat shirt, camo pants
       hairMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
@@ -109,6 +128,42 @@ export class CharacterMeshBuilder {
       ponytail.rotation.x = -0.5;
       ponytail.position.set(0, 0.02, -0.22);
       head.add(ponytail);
+    } else if (id === 'natasha') {
+      // Natasha: Braided blonde hair bun + silver collar trim
+      const bun = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), hairMat);
+      bun.position.set(0, 0.12, -0.16);
+      head.add(bun);
+
+      const silverTrimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8, roughness: 0.3 });
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.06, 12), silverTrimMat);
+      collar.position.y = 1.46;
+      group.add(collar);
+    } else if (id === 'bill') {
+      // Bill: Hunter cap visor on forehead
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x2b3824, roughness: 0.8 });
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.12), capMat);
+      visor.position.set(0, 0.16, 0.16);
+      visor.rotation.x = 0.1;
+      head.add(visor);
+    } else if (id === 'luis') {
+      // Luis: Welding goggles on forehead
+      const gogglesMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.8 });
+      const lensMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+      const goggleL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10), gogglesMat);
+      goggleL.rotation.x = Math.PI / 2;
+      goggleL.position.set(-0.07, 0.15, 0.15);
+      const lensL = new THREE.Mesh(new THREE.CircleGeometry(0.03, 8), lensMat);
+      lensL.position.set(0, 0, 0.02);
+      goggleL.add(lensL);
+
+      const goggleR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10), gogglesMat);
+      goggleR.rotation.x = Math.PI / 2;
+      goggleR.position.set(0.07, 0.15, 0.15);
+      const lensR = new THREE.Mesh(new THREE.CircleGeometry(0.03, 8), lensMat);
+      lensR.position.set(0, 0, 0.02);
+      goggleR.add(lensR);
+
+      head.add(goggleL, goggleR);
     }
 
     // --- 2. TORSO / CHEST ---
@@ -118,6 +173,15 @@ export class CharacterMeshBuilder {
     jacketOrSweater.position.y = 1.25;
     jacketOrSweater.castShadow = true;
     jacketOrSweater.receiveShadow = true;
+
+    // Katrina: Add pregnant belly bulge
+    if (id === 'katrina' && isPregnant) {
+      const bellyMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.65 });
+      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), bellyMat);
+      belly.position.set(0, 1.2, 0.18);
+      belly.scale.z = 0.8;
+      jacketOrSweater.add(belly);
+    }
 
     // Belt / Waist
     const waistMat = new THREE.MeshStandardMaterial({ color: 0x1f1915 });

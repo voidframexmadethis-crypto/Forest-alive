@@ -8,7 +8,7 @@ interface CharacterSelectModalProps {
   onClose: () => void;
 }
 
-export const CHARACTERS_INFO: Record<HumanCharacterId, {
+export const CHARACTERS_INFO: Record<string, {
   id: HumanCharacterId;
   name: string;
   role: string;
@@ -35,23 +35,32 @@ export const CHARACTERS_INFO: Record<HumanCharacterId, {
     perk: 'Agile Sprinting & Fast Stamina Recovery',
     stats: { health: 90, speed: 6.5, stamina: 120 }
   },
-  lewis: {
-    id: 'lewis',
-    name: 'LEWIS',
-    role: 'Combat Engineer & Mechanic',
-    description: 'Hardened field mechanic capable of maintaining safehouse defenses, vehicles, and heavy artillery under high-stress horde pressure.',
-    outfit: 'Canvas Flannel Jacket & Heavy Work Jeans',
-    perk: 'Defensive Fortification & Fast Reload Speed',
-    stats: { health: 110, speed: 5.8, stamina: 95 }
+  natasha: {
+    id: 'natasha',
+    name: 'NATASHA',
+    role: 'Estate Heiress & Precision Sharpshooter',
+    description: 'Resourceful mountain survivor with elite precision marksmanship and keen wilderness perception. Wields long-range rifles with unmatched steadiness.',
+    outfit: 'Tailored Dark Violet Tactical Coat & Fitted Trousers',
+    perk: 'High-Precision Critical Hits & Enhanced Target Spotting',
+    stats: { health: 95, speed: 6.2, stamina: 110 }
   },
   bill: {
     id: 'bill',
-    name: 'BILL',
+    name: 'BILL LEWIS',
     role: 'Veteran Marksman',
     description: 'Experienced wilderness survivor with decades of long-range engagement expertise. Highly accurate under low-light forest conditions.',
     outfit: 'Olive Field Jacket, Cap & Cargo Trousers',
     perk: 'Precision Headshot Multiplier & Flashlight Range',
     stats: { health: 100, speed: 5.8, stamina: 100 }
+  },
+  luis: {
+    id: 'luis',
+    name: 'LUIS',
+    role: 'Combat Engineer & Welder',
+    description: 'Hardened field mechanic capable of maintaining safehouse defenses, vehicles, and heavy artillery under high-stress horde pressure.',
+    outfit: 'Canvas Welder Flannel, Goggles & Work Jeans',
+    perk: 'Defensive Fortification & Fast Reload Speed',
+    stats: { health: 110, speed: 5.8, stamina: 95 }
   }
 };
 
@@ -65,7 +74,7 @@ export const CharacterSelectModal: React.FC<CharacterSelectModalProps> = ({
   const activeChar = CHARACTERS_INFO[activeTab];
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 font-['Plus_Jakarta_Sans'] select-none">
+    <div className="absolute inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 font-['Plus_Jakarta_Sans'] select-none">
       <div className="bg-neutral-950 border border-red-600/40 rounded-2xl w-full max-w-4xl overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.25)] flex flex-col md:flex-row">
         
         {/* LEFT SELECTION PANEL */}

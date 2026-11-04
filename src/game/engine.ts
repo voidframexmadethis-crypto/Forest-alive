@@ -10,6 +10,22 @@ import { CharacterRigController } from './characterRig';
 import { FirstPersonRigController } from './firstPersonRig';
 import { ForestEnvironmentManager } from './forestEnvironment';
 import { EncounterDirector } from './controllers/EncounterDirector';
+import { BaseEnemyAI } from './ai/BaseEnemyAI';
+import { ZombieAI } from './ai/ZombieAI';
+import { SkinwalkerAI } from './ai/SkinwalkerAI';
+import { DoubleTankAI } from './ai/DoubleTankAI';
+import { JockeyAI } from './ai/JockeyAI';
+import { CryingWitchAI } from './ai/CryingWitchAI';
+import { CloudCreatureAI } from './ai/CloudCreatureAI';
+import { FlyingPhantomAI } from './ai/FlyingPhantomAI';
+import { BloodSpiderAI } from './ai/BloodSpiderAI';
+import { SubterraneanSnakeAI } from './ai/SubterraneanSnakeAI';
+import { WingedIceAI } from './ai/WingedIceAI';
+import { StickSkinwalkerAI } from './ai/StickSkinwalkerAI';
+import { KatrinaCompanionAI } from './ai/KatrinaCompanionAI';
+import { networkClient } from './multiplayer/NetworkClient';
+import { RemotePlayerManager } from './multiplayer/RemotePlayerManager';
+import { MultiplayerRoom, NetworkPlayer } from '../types/multiplayer';
 
 export interface EngineCallbacks {
   onStatsChange: (stats: PlayerStats) => void;
@@ -19,11 +35,20 @@ export interface EngineCallbacks {
   onEnterSafehouseRest: () => void;
 }
 
+export interface EngineOptions {
+  isMultiplayer?: boolean;
+  multiplayerRoom?: MultiplayerRoom | null;
+  localPlayerId?: string | null;
+  selectedCharacter?: HumanCharacterId;
+  currentMission?: number;
+}
+
 export class GameEngine {
   private container: HTMLDivElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
+  private currentMission: number = 1;
 
   // Lights & Flashlight
   private ambientLight: THREE.AmbientLight;
@@ -146,6 +171,7 @@ export class GameEngine {
   // World & Entities
   public creatures: Creature[] = [];
   private gunDrops: { type: WeaponType; position: THREE.Vector3; mesh: THREE.Group }[] = [];
+  private environmentMeshes: THREE.Object3D[] = [];
   public tankMesh: THREE.Group | null = null;
   public tankPos = new THREE.Vector3(0, 0, -25);
   public jeepMesh: THREE.Group | null = null;
@@ -206,15 +232,37 @@ export class GameEngine {
     cameraRollWeight: 0.008
   };
 
+  // Cooperative Multiplayer Mode
+  public isMultiplayer: boolean = false;
+  public multiplayerRoom: MultiplayerRoom | null = null;
+  public localPlayerId: string | null = null;
+  public remotePlayerManager: RemotePlayerManager | null = null;
+  private networkSyncTimer: number = 0;
+  public isDowned: boolean = false;
+  public katrinaCompanion: KatrinaCompanionAI | null = null;
+
   public updateConfig(newConfig: Partial<typeof this.config>) {
     this.config = { ...this.config, ...newConfig };
   }
 
-  constructor(container: HTMLDivElement, mode: GameMode, forestType: ForestType, callbacks: EngineCallbacks) {
+  constructor(
+    container: HTMLDivElement,
+    mode: GameMode,
+    forestType: ForestType,
+    callbacks: EngineCallbacks,
+    options?: EngineOptions
+  ) {
     this.container = container;
     this.mode = mode;
-    this.forestType = forestType;
+    this.forestType = options?.currentMission && options.currentMission > 5 ? 'dead_winter' : forestType;
+    this.currentMission = options?.currentMission || 1;
     this.callbacks = callbacks;
+    this.isMultiplayer = !!options?.isMultiplayer;
+    this.multiplayerRoom = options?.multiplayerRoom || null;
+    this.localPlayerId = options?.localPlayerId || null;
+    if (options?.selectedCharacter) {
+      this.playerAvatarId = options.selectedCharacter;
+    }
 
     if (this.mode === 'the_fast_guy') {
       this.stats.unlockedWeapons = 'fast_guy,m4a1,smoke_grenade,shotgun,sniper,minigun,grenade';
@@ -235,12 +283,12 @@ export class GameEngine {
 
     // 1. Scene & Camera setup
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
+    this.camera = new THREE.PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 300);
     this.camera.position.copy(this.playerPos);
 
     // 2. Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -289,11 +337,22 @@ export class GameEngine {
     this.buildMacSuit();
     this.buildSafehouse();
 
-    // 7. Human Characters & Single-Player Rules (Player = Titan; Katrina, Lewis, Bill = Story NPCs)
-    this.playerAvatarId = 'titan';
-    const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId);
-    this.playerCharacterRig = new CharacterRigController(playerParts);
-    this.spawnStoryNpcs();
+    // 7. Human Characters & Single-Player Rules vs Cooperative Mode
+    if (this.isMultiplayer && this.localPlayerId) {
+      // Cooperative Mode: Selected protagonist avatar rig
+      const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId, this.isMultiplayer);
+      this.playerCharacterRig = new CharacterRigController(playerParts);
+
+      // Remote 3D Player Manager for real human survivors
+      this.remotePlayerManager = new RemotePlayerManager(this.scene, this.camera, this.localPlayerId);
+      this.setupMultiplayerListeners();
+    } else {
+      // Single-Player Campaign (Protected): Titan is always protagonist; Katrina, Lewis, Bill spawn as Story NPCs in safehouse
+      this.playerAvatarId = 'titan';
+      const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId, false);
+      this.playerCharacterRig = new CharacterRigController(playerParts);
+      this.spawnStoryNpcs();
+    }
 
     // 8. Event listeners & Loop
     this.setupEventListeners();
@@ -301,6 +360,49 @@ export class GameEngine {
 
     this.startSurvivalTimer();
     this.animate();
+  }
+
+  private setupMultiplayerListeners() {
+    networkClient.setListeners({
+      onPlayerUpdate: (playerId: string, data: Partial<NetworkPlayer>) => {
+        if (playerId !== this.localPlayerId && this.remotePlayerManager) {
+          const defaultName = this.multiplayerRoom?.players[playerId]?.name;
+          const defaultChar = this.multiplayerRoom?.players[playerId]?.characterId || 'katrina';
+          this.remotePlayerManager.updatePlayer(playerId, data, defaultName, defaultChar);
+        }
+      },
+      onBulletFired: (playerId: string, origin, direction, weaponId) => {
+        if (playerId !== this.localPlayerId && this.remotePlayerManager) {
+          this.remotePlayerManager.handleBulletFired(playerId, origin, direction, weaponId);
+        }
+      },
+      onCreatureDamage: (creatureId: string, damage: number) => {
+        const creature = this.creatures.find(c => c.id === creatureId);
+        if (creature && creature.state !== 'dead') {
+          creature.health -= damage;
+          const cVector = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
+          this.createBloodSpears(cVector);
+          if (creature.health <= 0) {
+            creature.state = 'dead';
+            if (creature.visualController) creature.visualController.playAnimation('death', false);
+            this.scene.remove(creature.mesh);
+            this.callbacks.onGameEvent(`TEAM ELIMINATED ${creature.name}!`);
+          }
+        }
+      },
+      onPlayerRevived: (reviverId: string, targetId: string) => {
+        if (targetId === this.localPlayerId) {
+          this.isDowned = false;
+          this.stats.health = 50;
+          this.callbacks.onStatsChange({ ...this.stats });
+          this.callbacks.onGameEvent('❤️ A TEAMMATE REVIVED YOU! BACK IN COMBAT!');
+          soundEngine.playMechanicalClick(1.0, 900);
+        }
+      },
+      onRoomUpdate: (room: MultiplayerRoom) => {
+        this.multiplayerRoom = room;
+      }
+    });
   }
 
   private spawnStoryNpcs() {
@@ -361,6 +463,7 @@ export class GameEngine {
     const terrain = new THREE.Mesh(geo, mat);
     terrain.receiveShadow = true;
     this.scene.add(terrain);
+    this.environmentMeshes.push(terrain);
 
     // Concrete Pathway (gray corridor spanning the combat arena)
     const pathGeo = new THREE.PlaneGeometry(5, 95);
@@ -374,6 +477,7 @@ export class GameEngine {
     pathway.position.set(0, 0.015, 10); // raised to avoid z-fighting
     pathway.receiveShadow = true;
     this.scene.add(pathway);
+    this.environmentMeshes.push(pathway);
   }
 
   private buildForest() {
@@ -1041,6 +1145,30 @@ export class GameEngine {
         visualController
       };
 
+      if (type === 'zombie' || type === 'striker_zombie') {
+        creature.aiController = new ZombieAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'skinwalker') {
+        creature.aiController = new SkinwalkerAI(creature, this.playerPos, () => this.triggerSkinwalkerJumpScare(creature));
+      } else if (type === 'double_tank') {
+        creature.aiController = new DoubleTankAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'jockey_9tentacles') {
+        creature.aiController = new JockeyAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'crying_witch') {
+        creature.aiController = new CryingWitchAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'cloud_creature') {
+        creature.aiController = new CloudCreatureAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'flying_phantom') {
+        creature.aiController = new FlyingPhantomAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'blood_spider') {
+        creature.aiController = new BloodSpiderAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'subterranean_snake') {
+        creature.aiController = new SubterraneanSnakeAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'winged_ice_skinwalker') {
+        creature.aiController = new WingedIceAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      } else if (type === 'stick_skinwalker_18ft') {
+        creature.aiController = new StickSkinwalkerAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
+      }
+
       this.creatures.push(creature);
     }
   }
@@ -1427,9 +1555,11 @@ export class GameEngine {
   }
 
   private onWindowResize = () => {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(width, height);
   };
 
   // Public UI API controllers
@@ -1651,6 +1781,17 @@ export class GameEngine {
   }
 
   private checkInteraction() {
+    // Cooperative Mode: Revive downed teammate if in proximity
+    if (this.isMultiplayer && this.remotePlayerManager) {
+      const downed = this.remotePlayerManager.getDownedTeammateInRange(this.playerPos, 3.2);
+      if (downed) {
+        networkClient.revivePlayer(downed.id);
+        this.callbacks.onGameEvent(`❤️ REVIVED TEAMMATE ${downed.name}!`);
+        soundEngine.playMechanicalClick(1.0, 900);
+        return;
+      }
+    }
+
     // Distance to Indestructible Jeep
     const distJeep = this.playerPos.distanceTo(this.jeepPos);
     if (distJeep < 6) {
@@ -1788,11 +1929,25 @@ export class GameEngine {
     raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
 
     const creatureMeshes = this.creatures.filter(c => c.state !== 'dead').map(c => c.mesh);
-    const intersects = raycaster.intersectObjects(creatureMeshes, true);
+    const targetObjects = [...creatureMeshes, ...this.environmentMeshes];
+    const intersects = raycaster.intersectObjects(targetObjects, true);
+
+    // In multiplayer, synchronize fired bullet tracers across clients
+    if (this.isMultiplayer) {
+      const origin = { x: this.camera.position.x, y: this.camera.position.y - 0.2, z: this.camera.position.z };
+      const rayDir = new THREE.Vector3();
+      this.camera.getWorldDirection(rayDir);
+      const hitPt = intersects.length > 0 ? { x: intersects[0].point.x, y: intersects[0].point.y, z: intersects[0].point.z } : undefined;
+      networkClient.sendBulletFired(origin, { x: rayDir.x, y: rayDir.y, z: rayDir.z }, this.currentWeapon.id, hitPt);
+    }
 
     if (intersects.length > 0) {
       const hitObj = intersects[0].object;
       const hitPoint = intersects[0].point;
+      const hitNormal = new THREE.Vector3(0, 1, 0);
+      if (intersects[0].face) {
+        hitNormal.copy(intersects[0].face.normal).transformDirection(hitObj.matrixWorld);
+      }
 
       // Find creature parent
       let root: THREE.Object3D | null = hitObj;
@@ -1809,9 +1964,14 @@ export class GameEngine {
         const damage = isHeadshot ? this.currentWeapon.damage * 2.2 : this.currentWeapon.damage;
 
         const cVector = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
+        this.takeDamage(0); // placeholder if we wanted self-damage logic? no, this is hitting monster.
         creature.health -= damage;
-        this.createBloodParticles(hitPoint);
+        this.spawnBloodImpact(hitPoint, hitNormal, creature.mesh);
         this.createBloodSpears(cVector);
+
+        if (this.isMultiplayer) {
+          networkClient.sendCreatureDamage(creature.id, damage, isHeadshot ? 'head' : 'body');
+        }
 
         // Pain screams on hit/damage
         if (Math.random() < 0.6) {
@@ -2079,7 +2239,7 @@ export class GameEngine {
         if (dist < 12.0) {
           const damage = Math.round(250 * (1.0 - dist / 12.0));
           creature.health -= damage;
-          this.createBloodParticles(cPos);
+          this.spawnBloodImpact(cPos, new THREE.Vector3(0, 1, 0));
 
           if (creature.health <= 0) {
             creature.state = 'dead';
@@ -2095,25 +2255,80 @@ export class GameEngine {
     }
   }
 
-  private createBloodParticles(pos: THREE.Vector3) {
+  private spawnBloodImpact(hitPoint: THREE.Vector3, hitNormal: THREE.Vector3, hitTransform?: THREE.Object3D) {
+    // 1. Blood Spurt Particle System (mirroring Unity BloodImpactSpawner.cs)
     const pGeo = new THREE.BufferGeometry();
-    const pCount = 18;
+    const pCount = 28;
     const positions = new Float32Array(pCount * 3);
+    const velocities: THREE.Vector3[] = [];
 
-    for (let i = 0; i < pCount * 3; i += 3) {
-      positions[i] = pos.x + (Math.random() - 0.5) * 0.4;
-      positions[i + 1] = pos.y + (Math.random() - 0.5) * 0.4;
-      positions[i + 2] = pos.z + (Math.random() - 0.5) * 0.4;
+    for (let i = 0; i < pCount; i++) {
+      positions[i * 3] = hitPoint.x;
+      positions[i * 3 + 1] = hitPoint.y;
+      positions[i * 3 + 2] = hitPoint.z;
+      const vel = hitNormal.clone().normalize().multiplyScalar(2.0 + Math.random() * 4.0);
+      vel.x += (Math.random() - 0.5) * 2.5;
+      vel.y += (Math.random() - 0.2) * 2.5 + 1.0;
+      vel.z += (Math.random() - 0.5) * 2.5;
+      velocities.push(vel);
     }
 
     pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const pMat = new THREE.PointsMaterial({ color: 0x880000, size: 0.12 });
+    const pMat = new THREE.PointsMaterial({ color: 0x990000, size: 0.15, transparent: true, opacity: 0.9 });
     const pSystem = new THREE.Points(pGeo, pMat);
-    this.particleGroup.add(pSystem);
+    this.scene.add(pSystem);
+
+    const startTime = performance.now();
+    const animSpurt = () => {
+      const elapsed = (performance.now() - startTime) * 0.001;
+      if (elapsed > 3.0) {
+        this.scene.remove(pSystem);
+        pGeo.dispose();
+        pMat.dispose();
+        return;
+      }
+      const posAttr = pGeo.attributes.position as THREE.BufferAttribute;
+      const arr = posAttr.array as Float32Array;
+      for (let i = 0; i < pCount; i++) {
+        arr[i * 3] += velocities[i].x * 0.016;
+        arr[i * 3 + 1] += velocities[i].y * 0.016 - 9.8 * 0.016 * elapsed * 0.2;
+        arr[i * 3 + 2] += velocities[i].z * 0.016;
+      }
+      posAttr.needsUpdate = true;
+      requestAnimationFrame(animSpurt);
+    };
+    requestAnimationFrame(animSpurt);
+
+    // 2. Blood Decal Splat on Wall/Floor Surface (mirroring Unity bloodDecalPrefabs)
+    const decalGeo = new THREE.PlaneGeometry(1, 1);
+    const decalMat = new THREE.MeshBasicMaterial({
+      color: 0x550000,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    });
+    const decalMesh = new THREE.Mesh(decalGeo, decalMat);
+
+    const spawnPos = hitPoint.clone().addScaledVector(hitNormal, 0.02);
+    decalMesh.position.copy(spawnPos);
+    const lookAtTarget = spawnPos.clone().add(hitNormal);
+    decalMesh.lookAt(lookAtTarget);
+    decalMesh.rotateZ(Math.random() * Math.PI * 2);
+
+    const randomScale = 0.5 + Math.random() * 1.0;
+    decalMesh.scale.set(randomScale, randomScale, randomScale);
+
+    if (hitTransform) {
+      hitTransform.add(decalMesh);
+    } else {
+      this.scene.add(decalMesh);
+    }
 
     setTimeout(() => {
-      this.particleGroup.remove(pSystem);
-    }, 400);
+      if (decalMesh.parent) decalMesh.parent.remove(decalMesh);
+      decalGeo.dispose();
+      decalMat.dispose();
+    }, 30000);
   }
 
   private createBloodSpears(pos: THREE.Vector3) {
@@ -2242,6 +2457,44 @@ export class GameEngine {
       this.creatures.forEach(c => {
         if(c.visualController) c.visualController.update(delta);
       });
+
+      if (this.katrinaCompanion) {
+        this.katrinaCompanion.update(delta, this.playerPos, this.creatures);
+      }
+
+      // Cooperative Multiplayer: Tick remote 3D player rigs and broadcast 20Hz position update
+      if (this.isMultiplayer) {
+        if (this.remotePlayerManager) {
+          this.remotePlayerManager.tick(delta);
+        }
+
+        this.networkSyncTimer += delta;
+        if (this.networkSyncTimer >= 0.05) { // 20 times per second
+          this.networkSyncTimer = 0;
+          const isMoving = this.moveForward || this.moveBackward || this.moveLeft || this.moveRight;
+          let stance: 'standing' | 'crouching' | 'prone' | 'sliding' | 'sprinting' = 'standing';
+          if (this.isDowned) stance = 'prone';
+          else if (this.isSliding) stance = 'sliding';
+          else if (this.isProne) stance = 'prone';
+          else if (this.isCrouched) stance = 'crouching';
+          else if (this.stats.isSprinting && isMoving) stance = 'sprinting';
+
+          networkClient.sendPlayerUpdate({
+            position: { x: this.playerPos.x, y: this.playerPos.y, z: this.playerPos.z },
+            rotation: { yaw: this.yaw, pitch: this.pitch, roll: this.cameraRoll },
+            stance,
+            isAiming: this.isAiming,
+            isShooting: false,
+            isReloading: this.isReloading,
+            weaponId: this.currentWeapon.id,
+            health: this.stats.health,
+            maxHealth: this.stats.maxHealth,
+            isDowned: this.isDowned,
+            isDead: false,
+            kills: this.stats.kills
+          });
+        }
+      }
     }
 
     // 3. Flashlight tracking camera
@@ -2332,7 +2585,10 @@ export class GameEngine {
     let actualSpeed = this.config.baseSpeed;
     this.targetEyeHeight = 1.7;
 
-    if (this.isDolphinDiving) {
+    if (this.isDowned) {
+      actualSpeed = 1.2; // Slow crawl while awaiting squad revive
+      this.targetEyeHeight = 0.4;
+    } else if (this.isDolphinDiving) {
       actualSpeed = this.config.baseSpeed * 1.5;
       this.targetEyeHeight = 0.5; // low dive
     } else if (this.isSliding) {
@@ -2491,6 +2747,16 @@ export class GameEngine {
     // Apply Camera Shake offset
     this.camera.position.add(this.camShake);
 
+    // Screen Blood FX (mirroring Unity ScreenBloodFX.cs)
+    const isLowHealth = this.stats.health < 30;
+    if (isLowHealth) {
+      const pulse = (Math.sin(performance.now() * 0.001 * 3.0) + 1.0) * 0.5; // pulseSpeed = 3.0
+      const pulsedAlpha = THREE.MathUtils.lerp(0.2, 0.7, pulse);
+      this.stats.bloodOnScreen = Math.max(this.stats.bloodOnScreen, pulsedAlpha);
+    } else if (this.stats.bloodOnScreen > 0) {
+      this.stats.bloodOnScreen = Math.max(0, this.stats.bloodOnScreen - delta * 0.75); // fadeSpeed / 2
+    }
+
     this.callbacks.onStatsChange({ ...this.stats });
   }
 
@@ -2502,168 +2768,66 @@ export class GameEngine {
 
     this.creatures.forEach((creature) => {
       if (creature.state === 'dead') return;
-      
-      // Whip Stunned / Incapacitated State
-      if (creature.stunTimer && creature.stunTimer > 0) {
-        creature.stunTimer -= delta;
-        if (creature.stunTimer <= 0) {
-          creature.stunTimer = 0;
-          if (creature.mesh && !creature.isTurtle) {
-            creature.mesh.position.y = 0; // return to standing
-          }
-        }
-        return; // Stunned creatures remain incapacitated on ground!
-      }
 
-      // Peaceful Turtle State Handling
-      if (creature.isTurtle) {
-        creature.idleTimer = (creature.idleTimer || 0) + delta * 1.5;
-        creature.mesh.rotation.y += Math.sin(creature.idleTimer) * 0.015;
-        const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), creature.mesh.rotation.y);
-        creature.mesh.position.addScaledVector(forward, creature.speed * delta);
-        creature.position.x = creature.mesh.position.x;
-        creature.position.z = creature.mesh.position.z;
-        return; // Turtles do not attack or chase!
-      }
-
-      // Fleeing State Handling (Smelled/saw allergic smoke cloud)
-      if (creature.state === 'fleeing') {
-        if (creature.visualController) {
-          creature.visualController.playAnimation('movement', true);
-        }
-        return; // Fleeing creatures run away and do not attack player!
-      }
-
-      // Update procedural idle movement or animation state
-      creature.idleTimer = (creature.idleTimer || 0) + delta * 2.0;
-      if (creature.state === 'idle') {
-        creature.mesh.position.y += Math.sin(creature.idleTimer) * 0.005; // breathing
-        creature.mesh.rotation.y += Math.sin(creature.idleTimer * 0.5) * 0.002; // subtle idle sway
-        if (creature.visualController) {
-          creature.visualController.playAnimation('idle', true);
-        }
-      } else if (creature.state === 'chasing') {
-        if (creature.visualController) {
-          creature.visualController.playAnimation('movement', true);
-        }
-      }
-
-      const cPos = creature.mesh.position;
-      const distToPlayer = cPos.distanceTo(this.playerPos);
-
-      // --- 1. INVESTIGATE SOUND STATE ---
-      if (creature.state === 'investigate' && creature.investigateTargetPos) {
-        const invTarget = new THREE.Vector3(creature.investigateTargetPos.x, cPos.y, creature.investigateTargetPos.z);
-        const distToSound = cPos.distanceTo(invTarget);
-
-        if (distToSound > 2.0) {
-          const dir = new THREE.Vector3().subVectors(invTarget, cPos).normalize();
-          cPos.addScaledVector(dir, creature.speed * 0.5 * delta);
-          creature.mesh.lookAt(invTarget.x, cPos.y, invTarget.z);
-          if (creature.visualController) creature.visualController.playAnimation('movement', true);
-        } else {
-          // Reached sound origin -> transition to search nearby area
-          creature.state = 'search';
-          creature.searchTimer = 5.0;
-        }
-      }
-
-      // --- 2. SEARCH AREA STATE ---
-      if (creature.state === 'search') {
-        creature.searchTimer = (creature.searchTimer || 0) - delta;
-        creature.mesh.rotation.y += Math.sin(now * 0.003) * 0.02; // looking around
-        if (creature.visualController) creature.visualController.playAnimation('idle', true);
-
-        if ((creature.searchTimer || 0) <= 0) {
-          creature.state = 'idle';
-          creature.investigateTargetPos = null;
-        }
-      }
-
-      // --- 3. LINE OF SIGHT & PLAYER DETECTION ---
-      if (distToPlayer < 22.0 && creature.state !== 'chasing' && creature.state !== 'chase' && (creature.state as string) !== 'fleeing') {
-        const playerDir = new THREE.Vector3().subVectors(this.playerPos, cPos).normalize();
-        const creatureForward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), creature.mesh.rotation.y);
-
-        // Detect if player is close or in front view cone or making sprinting noise
-        const isSprintingNoise = this.stats.isSprinting && distToPlayer < 18.0;
-        const isInViewCone = creatureForward.dot(playerDir) > 0.3 && distToPlayer < 16.0;
-
-        if (distToPlayer < 6.0 || isInViewCone || isSprintingNoise) {
-          creature.state = 'chasing';
-          creature.lastKnownPlayerPos = this.playerPos.clone();
-        }
-      }
-
-      // --- 4. LOSE PLAYER & BREAK LINE OF SIGHT ---
-      if ((creature.state === 'chasing' || creature.state === 'chase') && distToPlayer > 28.0) {
-        creature.state = 'search';
-        creature.searchTimer = 6.0;
-        creature.lastKnownPlayerPos = this.playerPos.clone();
-      }
-
-      // --- SKINWALKER PSYCHOLOGICAL HORROR JUMP-SCARE ---
-      if (creature.type === 'skinwalker' && distToPlayer < 4.5 && !this.stats.skinwalkerJumpScareActive && this.skinwalkerJumpScareCooldown <= 0) {
-        this.stats.skinwalkerJumpScareActive = true;
-        this.skinwalkerJumpScareCooldown = 15.0; // 15s cooldown
-
-        soundEngine.playCreatureSound('witch_scream');
-        soundEngine.playCreatureSound('skinwalker');
-        setTimeout(() => soundEngine.playCreatureSound('skinwalker'), 350);
-        setTimeout(() => soundEngine.playCreatureSound('witch_scream'), 700);
-
-        this.callbacks.onGameEvent('⚠️ SKINWALKER MIND SCARE!');
-        this.callbacks.onStatsChange({ ...this.stats });
-
-        setTimeout(() => {
-          this.stats.skinwalkerJumpScareActive = false;
-          this.stats.health = Math.max(1, this.stats.health - 0.5);
-          this.stats.bloodOnScreen = 0.95;
-          this.callbacks.onStatsChange({ ...this.stats });
-        }, 1800);
-      }
-
-      // --- CRYING WITCH SPECIAL LOGIC ---
-      if (creature.type === 'crying_witch') {
-        if (!creature.isEnraged) {
-          if (Math.random() < 0.02) soundEngine.playCreatureSound('witch_crying');
-
-          if (this.stats.isFlashlightOn && distToPlayer < 20) {
-            const playerDir = new THREE.Vector3();
-            this.camera.getWorldDirection(playerDir);
-            const toWitch = new THREE.Vector3().subVectors(cPos, this.playerPos).normalize();
-
-            if (playerDir.dot(toWitch) > 0.75) {
-              creature.isEnraged = true;
-              creature.state = 'chasing';
-              soundEngine.playCreatureSound('witch_scream');
-              this.callbacks.onGameEvent('THE CRYING WITCH HAS BEEN ENRAGED BY YOUR FLASHLIGHT!');
+      // Use modern AI controller (mirroring Unity BaseEnemyAI structure)
+      if (creature.aiController) {
+        // Special logic for crying witch flashlight detection (still easier to check here due to camera)
+        if (creature.type === 'crying_witch' && !creature.isEnraged) {
+          if (this.stats.isFlashlightOn) {
+            const cPos = creature.mesh.position;
+            const distToPlayer = cPos.distanceTo(this.playerPos);
+            if (distToPlayer < 20) {
+              const playerDir = new THREE.Vector3();
+              this.camera.getWorldDirection(playerDir);
+              const toWitch = new THREE.Vector3().subVectors(cPos, this.playerPos).normalize();
+              if (playerDir.dot(toWitch) > 0.75) {
+                creature.isEnraged = true;
+                creature.state = 'chasing';
+                soundEngine.playCreatureSound('witch_scream');
+                this.callbacks.onGameEvent('THE CRYING WITCH HAS BEEN ENRAGED BY YOUR FLASHLIGHT!');
+              }
             }
           }
-          return;
         }
-      }
 
-      // --- 5. CHASE & ATTACK LOGIC ---
-      if (creature.state === 'chasing' || creature.state === 'chase') {
-        if (creature.visualController) creature.visualController.playAnimation('movement', true);
-
-        const dir = new THREE.Vector3().subVectors(this.playerPos, cPos);
-        dir.y = 0;
-        dir.normalize();
-
-        cPos.addScaledVector(dir, creature.speed * delta);
-        creature.position.x = cPos.x;
-        creature.position.z = cPos.z;
-
-        creature.mesh.lookAt(this.playerPos.x, cPos.y, this.playerPos.z);
-
-        if (distToPlayer <= creature.attackRange && now - creature.lastAttackTime > creature.attackCooldown) {
-          creature.lastAttackTime = now;
-          this.performCreatureAttack(creature);
-        }
+        creature.aiController.update(delta, now, this.stats);
+        return;
       }
     });
+  }
+
+  // --- PLAYER HEALTH SYSTEM (Mirroring Unity PlayerHealth.cs) ---
+  public takeDamage(amount: number) {
+    this.stats.health -= amount;
+    this.stats.health = THREE.MathUtils.clamp(this.stats.health, 0, this.stats.maxHealth);
+
+    // Notify screen blood system (Mirroring ScreenBloodFX.cs logic)
+    const damageRatio = amount / this.stats.maxHealth;
+    const addedAlpha = THREE.MathUtils.lerp(0.3, 0.9, damageRatio); // minAlphaOnHit=0.3, maxAlphaOnHit=0.9
+    this.stats.bloodOnScreen = Math.min(1.0, this.stats.bloodOnScreen + addedAlpha);
+
+    // Trigger low health pulse state (Handled in updatePlayerMovement via this.stats.health < 30)
+
+    if (this.stats.health <= 0) {
+      this.stats.health = 0;
+      if (this.isMultiplayer) {
+        if (!this.isDowned) {
+          this.isDowned = true;
+          this.callbacks.onGameEvent('⚠️ YOU ARE DOWNED! CRAWL TO COVER & AWAIT SQUAD REVIVE!');
+          soundEngine.playCreatureSound('witch_scream');
+          networkClient.sendPlayerUpdate({
+            isDowned: true,
+            health: 0,
+            stance: 'prone'
+          });
+        }
+      } else {
+        this.callbacks.onGameOver(false);
+        console.log("Player Defeated");
+      }
+    }
+    
+    this.callbacks.onStatsChange({ ...this.stats });
   }
 
   private performCreatureAttack(creature: Creature) {
@@ -2675,20 +2839,25 @@ export class GameEngine {
 
     // Sloth-like health depletion (takes 3 to 7 hours until all 18 hearts can go down!)
     const slothDamage = Math.min(0.04, creature.damage * 0.002);
-    this.stats.health = Math.max(0, this.stats.health - slothDamage);
+    this.takeDamage(slothDamage);
 
     if (creature.visualController) {
       creature.visualController.playAnimation('attack', false);
     }
 
     if (creature.type === 'double_tank') {
-      // Double tank crushing punch!
+      // Double tank crushing punch & ground slam with immense force!
       soundEngine.playCreatureSound('double_tank');
       soundEngine.playBloodCough();
       this.stats.coughedBlood = true;
       this.stats.bloodOnScreen = 1.0;
-      this.recoilPitch = 0.15; // violent camera jerk
-      this.callbacks.onGameEvent('DOUBLE TANK DELIVERED A CRUSHING PUNCH! YOU COUGHED BLOOD!');
+      this.recoilPitch = 0.18; // violent camera jerk
+      this.camShake.set(
+        (Math.random() - 0.5) * 0.6,
+        (Math.random() - 0.5) * 0.6,
+        (Math.random() - 0.5) * 0.6
+      );
+      this.callbacks.onGameEvent('THE TANK SLAMS THE GROUND WITH IMMENSE FORCE! YOU COUGHED BLOOD!');
     } else if (creature.type === 'jockey_9tentacles') {
       // 9-tentacle jockey green acid spit!
       soundEngine.playCreatureSound('jockey');
@@ -2734,12 +2903,30 @@ export class GameEngine {
       this.stats.bloodOnScreen = Math.min(1.0, this.stats.bloodOnScreen + 0.4);
     }
 
-    if (this.stats.health <= 0) {
-      this.stats.health = 0;
-      this.callbacks.onGameOver(false);
-    }
-
     this.callbacks.onStatsChange({ ...this.stats });
+  }
+
+  private triggerSkinwalkerJumpScare(creature: Creature) {
+    if (this.stats.skinwalkerJumpScareActive || this.skinwalkerJumpScareCooldown > 0) return;
+
+    this.stats.skinwalkerJumpScareActive = true;
+    this.skinwalkerJumpScareCooldown = 15.0; // 15s cooldown
+
+    soundEngine.playCreatureSound('witch_scream');
+    soundEngine.playCreatureSound('skinwalker');
+    setTimeout(() => soundEngine.playCreatureSound('skinwalker'), 350);
+    setTimeout(() => soundEngine.playCreatureSound('witch_scream'), 700);
+
+    this.callbacks.onGameEvent('⚠️ SKINWALKER MIND SCARE!');
+    this.callbacks.onStatsChange({ ...this.stats });
+
+    setTimeout(() => {
+      this.stats.skinwalkerJumpScareActive = false;
+      // Use takeDamage for consistent health and blood FX
+      this.takeDamage(0.5); 
+      this.stats.bloodOnScreen = Math.max(this.stats.bloodOnScreen, 0.95);
+      this.callbacks.onStatsChange({ ...this.stats });
+    }, 1800);
   }
 
   private spawnGunDrop(pos: { x: number; y: number; z: number }) {
@@ -2887,6 +3074,16 @@ export class GameEngine {
     this.container.removeEventListener('touchmove', this.onTouchMove);
     this.container.removeEventListener('touchend', this.onTouchEnd);
 
+    if (this.remotePlayerManager) {
+      this.remotePlayerManager.dispose();
+      this.remotePlayerManager = null;
+    }
+
+    if (this.katrinaCompanion) {
+      this.katrinaCompanion.dispose(this.scene);
+      this.katrinaCompanion = null;
+    }
+
     if (this.renderer && this.renderer.domElement) {
       this.container.removeChild(this.renderer.domElement);
     }
@@ -2895,5 +3092,16 @@ export class GameEngine {
       this.scene.remove(drop.mesh);
     });
     this.gunDrops = [];
+  }
+
+  public interact() {
+    this.checkInteraction();
+  }
+
+  public getNearbyDownedTeammate(): { id: string; name: string } | null {
+    if (!this.isMultiplayer || !this.remotePlayerManager) return null;
+    const downed = this.remotePlayerManager.getDownedTeammateInRange(this.playerPos, 3.2);
+    if (downed) return { id: downed.id, name: downed.name };
+    return null;
   }
 }
