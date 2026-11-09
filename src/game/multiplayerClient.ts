@@ -14,6 +14,7 @@ export interface MultiplayerClientCallbacks {
   onRoomCreated?: (room: MultiplayerRoom) => void;
   onRoomJoined?: (room: MultiplayerRoom) => void;
   onRoomUpdated?: (room: MultiplayerRoom) => void;
+  onCharacterChanged?: (sessionId: string, characterId: HumanCharacterId) => void;
   onPlayerJoined?: (player: MultiplayerPlayer) => void;
   onPlayerLeft?: (sessionId: string, newHostId?: string) => void;
   onGameStarted?: (room: MultiplayerRoom) => void;
@@ -38,16 +39,22 @@ export interface MultiplayerClientCallbacks {
   onPingUpdate?: (pingMs: number) => void;
 }
 
+type EventListenerMap = {
+  [K in keyof MultiplayerClientCallbacks]?: Set<NonNullable<MultiplayerClientCallbacks[K]>>;
+};
+
 export class MultiplayerClient {
   private static instance: MultiplayerClient | null = null;
 
   private socket: WebSocket | null = null;
   private status: ConnectionStatus = 'disconnected';
   private callbacks: MultiplayerClientCallbacks = {};
+  private listeners: EventListenerMap = {};
   private reconnectTimeout: number | null = null;
   private pingInterval: number | null = null;
   private lastPingSentTime: number = 0;
   private currentPing: number = 0;
+  private connectPromise: Promise<void> | null = null;
 
   public sessionId: string | null = null;
   public currentRoom: MultiplayerRoom | null = null;
@@ -68,6 +75,56 @@ export class MultiplayerClient {
 
   public setCallbacks(callbacks: MultiplayerClientCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
+  }
+
+  public addListener<K extends keyof MultiplayerClientCallbacks>(
+    event: K,
+    fn: NonNullable<MultiplayerClientCallbacks[K]>
+  ): () => void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = new Set() as any;
+    }
+    (this.listeners[event] as Set<any>).add(fn);
+
+    return () => {
+      this.removeListener(event, fn);
+    };
+  }
+
+  public removeListener<K extends keyof MultiplayerClientCallbacks>(
+    event: K,
+    fn: NonNullable<MultiplayerClientCallbacks[K]>
+  ) {
+    if (this.listeners[event]) {
+      (this.listeners[event] as Set<any>).delete(fn);
+    }
+  }
+
+  private emit<K extends keyof MultiplayerClientCallbacks>(
+    event: K,
+    ...args: any[]
+  ) {
+    // 1. Direct legacy callback
+    const cb = this.callbacks[event] as any;
+    if (typeof cb === 'function') {
+      try {
+        cb(...args);
+      } catch (err) {
+        console.error(`[MultiplayerClient] Callback error for ${event}:`, err);
+      }
+    }
+
+    // 2. Multi-listener subscribers
+    const set = this.listeners[event];
+    if (set && set.size > 0) {
+      set.forEach((fn: any) => {
+        try {
+          fn(...args);
+        } catch (err) {
+          console.error(`[MultiplayerClient] Listener error for ${event}:`, err);
+        }
+      });
+    }
   }
 
   public getStatus(): ConnectionStatus {
@@ -97,34 +154,66 @@ export class MultiplayerClient {
   }
 
   public connect(): Promise<void> {
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+    // If already fully connected and open, resolve immediately
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       return Promise.resolve();
+    }
+
+    // If a connection is already in progress, return the existing in-flight promise
+    if (this.connectPromise) {
+      return this.connectPromise;
     }
 
     this.updateStatus('connecting', 'Connecting to multiplayer server...');
 
-    return new Promise((resolve, reject) => {
+    this.connectPromise = new Promise<void>((resolve, reject) => {
       const url = this.getWebSocketUrl();
       console.log(`[MultiplayerClient] Connecting to WebSocket: ${url}`);
+
+      // Clean up any stale closed/closing socket
+      if (this.socket) {
+        try {
+          this.socket.onopen = null;
+          this.socket.onmessage = null;
+          this.socket.onerror = null;
+          this.socket.onclose = null;
+          this.socket.close();
+        } catch {}
+        this.socket = null;
+      }
 
       try {
         this.socket = new WebSocket(url);
       } catch (err: any) {
-        this.updateStatus('error', `Connection error: ${err?.message || 'Failed to open WebSocket'}`);
-        reject(err);
+        const errorMsg = `Connection failed: ${err?.message || 'Unable to open WebSocket'}`;
+        this.updateStatus('error', errorMsg);
+        this.connectPromise = null;
+        reject(new Error(errorMsg));
         return;
       }
 
+      let isResolved = false;
+
+      // 7-second connection timeout
       const connectionTimeout = window.setTimeout(() => {
-        if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
-          this.socket.close();
-          this.updateStatus('error', 'Connection timed out. Server may be starting or unreachable.');
-          reject(new Error('Connection timed out'));
+        if (!isResolved) {
+          isResolved = true;
+          this.connectPromise = null;
+          if (this.socket) {
+            try { this.socket.close(); } catch {}
+            this.socket = null;
+          }
+          const msg = 'Connection timed out. The server may be starting or unreachable. Please try again.';
+          this.updateStatus('error', msg);
+          reject(new Error(msg));
         }
       }, 7000);
 
       this.socket.onopen = () => {
+        if (isResolved) return;
+        isResolved = true;
         window.clearTimeout(connectionTimeout);
+        this.connectPromise = null;
         this.updateStatus('connected', 'Connected to online co-op server');
         this.startHeartbeat();
         resolve();
@@ -140,8 +229,17 @@ export class MultiplayerClient {
       };
 
       this.socket.onerror = (e) => {
-        console.error('[MultiplayerClient] WebSocket error:', e);
-        this.updateStatus('error', 'Multiplayer server connection error.');
+        console.error('[MultiplayerClient] WebSocket error event:', e);
+        if (!isResolved) {
+          isResolved = true;
+          window.clearTimeout(connectionTimeout);
+          this.connectPromise = null;
+          const msg = 'Multiplayer server connection error. Server may be unreachable.';
+          this.updateStatus('error', msg);
+          reject(new Error(msg));
+        } else {
+          this.updateStatus('error', 'Multiplayer server encountered an error.');
+        }
       };
 
       this.socket.onclose = (e) => {
@@ -149,16 +247,28 @@ export class MultiplayerClient {
         this.stopHeartbeat();
         this.socket = null;
 
+        if (!isResolved) {
+          isResolved = true;
+          this.connectPromise = null;
+          const msg = 'Connection closed before establishing link with server.';
+          this.updateStatus('disconnected', msg);
+          reject(new Error(msg));
+          return;
+        }
+
+        this.connectPromise = null;
         if (this.status !== 'error') {
           this.updateStatus('disconnected', 'Disconnected from multiplayer server');
         }
 
-        // Auto-reconnect if we were in a room
+        // Auto-reconnect if we were in an active room
         if (this.currentRoom) {
           this.scheduleReconnect();
         }
       };
     });
+
+    return this.connectPromise;
   }
 
   private scheduleReconnect() {
@@ -191,9 +301,7 @@ export class MultiplayerClient {
 
   private updateStatus(newStatus: ConnectionStatus, message?: string) {
     this.status = newStatus;
-    if (this.callbacks.onConnectionStatusChange) {
-      this.callbacks.onConnectionStatusChange(newStatus, message);
-    }
+    this.emit('onConnectionStatusChange', newStatus, message);
   }
 
   private handleServerMessage(msg: ServerToClientMessage) {
@@ -206,9 +314,7 @@ export class MultiplayerClient {
       case 'pong': {
         if (this.lastPingSentTime > 0) {
           this.currentPing = Math.round(performance.now() - this.lastPingSentTime);
-          if (this.callbacks.onPingUpdate) {
-            this.callbacks.onPingUpdate(this.currentPing);
-          }
+          this.emit('onPingUpdate', this.currentPing);
         }
         break;
       }
@@ -217,20 +323,16 @@ export class MultiplayerClient {
         this.currentRoom = msg.room;
         this.isHost = true;
         this.sessionId = msg.sessionId;
-        console.log(`[MultiplayerClient] Room created: ${msg.room.roomCode}`);
-        if (this.callbacks.onRoomCreated) {
-          this.callbacks.onRoomCreated(msg.room);
-        }
+        console.log(`[MultiplayerClient] Room created successfully: ${msg.room.roomCode}`);
+        this.emit('onRoomCreated', msg.room);
         break;
 
       case 'room_joined':
         this.currentRoom = msg.room;
         this.isHost = msg.room.hostSessionId === msg.sessionId;
         this.sessionId = msg.sessionId;
-        console.log(`[MultiplayerClient] Room joined: ${msg.room.roomCode}`);
-        if (this.callbacks.onRoomJoined) {
-          this.callbacks.onRoomJoined(msg.room);
-        }
+        console.log(`[MultiplayerClient] Room joined successfully: ${msg.room.roomCode}`);
+        this.emit('onRoomJoined', msg.room);
         break;
 
       case 'room_update':
@@ -238,8 +340,19 @@ export class MultiplayerClient {
         if (this.sessionId) {
           this.isHost = msg.room.hostSessionId === this.sessionId;
         }
-        if (this.callbacks.onRoomUpdated) {
-          this.callbacks.onRoomUpdated(msg.room);
+        this.emit('onRoomUpdated', msg.room);
+        break;
+
+      case 'character_changed':
+        if (this.currentRoom && this.currentRoom.players[msg.sessionId]) {
+          this.currentRoom.players[msg.sessionId].characterId = msg.characterId;
+        }
+        if (this.sessionId === msg.sessionId) {
+          this.myCharacterId = msg.characterId;
+        }
+        this.emit('onCharacterChanged', msg.sessionId, msg.characterId);
+        if (this.currentRoom) {
+          this.emit('onRoomUpdated', this.currentRoom);
         }
         break;
 
@@ -247,13 +360,15 @@ export class MultiplayerClient {
         if (this.currentRoom) {
           this.currentRoom.players[msg.player.sessionId] = msg.player;
         }
-        if (this.callbacks.onPlayerJoined) {
-          this.callbacks.onPlayerJoined(msg.player);
-        }
+        this.emit('onPlayerJoined', msg.player);
         break;
 
       case 'player_left':
-        if (this.currentRoom) {
+        if (msg.sessionId === this.sessionId) {
+          // I left the room
+          this.currentRoom = null;
+          this.isHost = false;
+        } else if (this.currentRoom) {
           delete this.currentRoom.players[msg.sessionId];
           if (msg.newHostId) {
             this.currentRoom.hostSessionId = msg.newHostId;
@@ -265,47 +380,33 @@ export class MultiplayerClient {
             }
           }
         }
-        if (this.callbacks.onPlayerLeft) {
-          this.callbacks.onPlayerLeft(msg.sessionId, msg.newHostId);
-        }
+        this.emit('onPlayerLeft', msg.sessionId, msg.newHostId);
         break;
 
       case 'game_started':
         this.currentRoom = msg.room;
-        if (this.callbacks.onGameStarted) {
-          this.callbacks.onGameStarted(msg.room);
-        }
+        this.emit('onGameStarted', msg.room);
         break;
 
       case 'players_sync':
-        if (this.callbacks.onPlayersSync) {
-          this.callbacks.onPlayersSync(msg.players);
-        }
+        this.emit('onPlayersSync', msg.players);
         break;
 
       case 'remote_shoot':
-        if (this.callbacks.onRemoteShoot) {
-          this.callbacks.onRemoteShoot(msg);
-        }
+        this.emit('onRemoteShoot', msg);
         break;
 
       case 'creature_damaged':
-        if (this.callbacks.onCreatureDamaged) {
-          this.callbacks.onCreatureDamaged(msg);
-        }
+        this.emit('onCreatureDamaged', msg);
         break;
 
       case 'chat_broadcast':
-        if (this.callbacks.onChat) {
-          this.callbacks.onChat(msg.senderName, msg.text);
-        }
+        this.emit('onChat', msg.senderName, msg.text);
         break;
 
       case 'error':
         console.error(`[MultiplayerClient] Server error [${msg.code}]:`, msg.message);
-        if (this.callbacks.onError) {
-          this.callbacks.onError(msg.message, msg.code);
-        }
+        this.emit('onError', msg.message, msg.code);
         break;
     }
   }
@@ -317,44 +418,124 @@ export class MultiplayerClient {
       } catch (err) {
         console.error('[MultiplayerClient] Failed to send message:', err);
       }
+    } else {
+      console.warn('[MultiplayerClient] Cannot send message, socket is not OPEN (readyState:', this.socket?.readyState, ')');
     }
   }
 
-  // Action methods
+  // Action methods with timeout promises
   public async createRoom(
     playerName: string,
     characterId: HumanCharacterId,
     mode: GameMode,
     forestType: ForestType,
-    difficulty: Difficulty
-  ): Promise<void> {
+    difficulty: Difficulty,
+    timeoutMs: number = 7000
+  ): Promise<MultiplayerRoom> {
     await this.connect();
-    this.myPlayerName = playerName;
-    this.myCharacterId = characterId;
 
-    this.send({
-      type: 'create_room',
-      playerName,
-      characterId,
-      mode,
-      forestType,
-      difficulty
+    return new Promise<MultiplayerRoom>((resolve, reject) => {
+      let timer: number | null = null;
+      let cleanup: (() => void) | null = null;
+
+      const handleCreated = (room: MultiplayerRoom) => {
+        if (timer) window.clearTimeout(timer);
+        cleanup?.();
+        resolve(room);
+      };
+
+      const handleError = (msg: string) => {
+        if (timer) window.clearTimeout(timer);
+        cleanup?.();
+        reject(new Error(msg));
+      };
+
+      cleanup = () => {
+        this.removeListener('onRoomCreated', handleCreated);
+        this.removeListener('onError', handleError);
+      };
+
+      this.addListener('onRoomCreated', handleCreated);
+      this.addListener('onError', handleError);
+
+      timer = window.setTimeout(() => {
+        cleanup?.();
+        reject(new Error('Room creation timed out. The server did not respond. Please retry.'));
+      }, timeoutMs);
+
+      this.myPlayerName = playerName;
+      this.myCharacterId = characterId;
+
+      this.send({
+        type: 'create_room',
+        playerName,
+        characterId,
+        mode,
+        forestType,
+        difficulty
+      });
     });
   }
 
   public async joinRoom(
     roomCode: string,
     playerName: string,
-    characterId: HumanCharacterId
-  ): Promise<void> {
+    characterId: HumanCharacterId,
+    timeoutMs: number = 7000
+  ): Promise<MultiplayerRoom> {
     await this.connect();
-    this.myPlayerName = playerName;
+
+    return new Promise<MultiplayerRoom>((resolve, reject) => {
+      let timer: number | null = null;
+      let cleanup: (() => void) | null = null;
+
+      const handleJoined = (room: MultiplayerRoom) => {
+        if (timer) window.clearTimeout(timer);
+        cleanup?.();
+        resolve(room);
+      };
+
+      const handleError = (msg: string) => {
+        if (timer) window.clearTimeout(timer);
+        cleanup?.();
+        reject(new Error(msg));
+      };
+
+      cleanup = () => {
+        this.removeListener('onRoomJoined', handleJoined);
+        this.removeListener('onError', handleError);
+      };
+
+      this.addListener('onRoomJoined', handleJoined);
+      this.addListener('onError', handleError);
+
+      timer = window.setTimeout(() => {
+        cleanup?.();
+        reject(new Error('Joining room timed out. Please check your room code and retry.'));
+      }, timeoutMs);
+
+      this.myPlayerName = playerName;
+      this.myCharacterId = characterId;
+
+      this.send({
+        type: 'join_room',
+        roomCode: roomCode.trim().toUpperCase(),
+        playerName,
+        characterId
+      });
+    });
+  }
+
+  public changeCharacter(characterId: HumanCharacterId) {
     this.myCharacterId = characterId;
 
+    if (this.currentRoom && this.sessionId && this.currentRoom.players[this.sessionId]) {
+      this.currentRoom.players[this.sessionId].characterId = characterId;
+      this.emit('onRoomUpdated', this.currentRoom);
+    }
+
     this.send({
-      type: 'join_room',
-      roomCode: roomCode.trim().toUpperCase(),
-      playerName,
+      type: 'change_character',
       characterId
     });
   }
@@ -363,6 +544,31 @@ export class MultiplayerClient {
     this.send({ type: 'leave_room' });
     this.currentRoom = null;
     this.isHost = false;
+  }
+
+  public disconnect() {
+    if (this.reconnectTimeout) {
+      window.clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.stopHeartbeat();
+    this.leaveRoom();
+
+    if (this.socket) {
+      try {
+        this.socket.onopen = null;
+        this.socket.onmessage = null;
+        this.socket.onerror = null;
+        this.socket.onclose = null;
+        this.socket.close();
+      } catch {}
+      this.socket = null;
+    }
+
+    this.status = 'disconnected';
+    this.connectPromise = null;
+    this.callbacks = {};
+    this.listeners = {};
   }
 
   public startGame() {

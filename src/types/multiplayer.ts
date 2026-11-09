@@ -81,6 +81,10 @@ export type ClientToServerMessage =
       text: string;
     }
   | {
+      type: 'change_character';
+      characterId: HumanCharacterId;
+    }
+  | {
       type: 'ping';
       timestamp: number;
     };
@@ -103,6 +107,11 @@ export type ServerToClientMessage =
   | {
       type: 'room_update';
       room: MultiplayerRoom;
+    }
+  | {
+      type: 'character_changed';
+      sessionId: string;
+      characterId: HumanCharacterId;
     }
   | {
       type: 'player_joined';

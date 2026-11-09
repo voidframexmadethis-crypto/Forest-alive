@@ -464,6 +464,23 @@ export class GameEngine {
         this.remotePlayers.set(p.sessionId, remote);
         this.callbacks.onGameEvent(`Squadmate ${p.name} deployed into your sector!`);
       } else {
+        // Update character mesh if changed
+        if (p.characterId && remote.characterId !== p.characterId) {
+          this.scene.remove(remote.parts.group);
+          const newParts = CharacterMeshBuilder.createHumanCharacter(p.characterId);
+          newParts.group.position.copy(remote.parts.group.position);
+          this.scene.add(newParts.group);
+          const newRig = new CharacterRigController(newParts);
+          newRig.setEquippedWeapon(p.currentWeapon || 'm4a1');
+          const nameTag = this.createNameTagSprite(p.name, p.characterId);
+          newParts.group.add(nameTag);
+
+          remote.parts = newParts;
+          remote.rig = newRig;
+          remote.characterId = p.characterId;
+          remote.nameTag = nameTag;
+        }
+
         remote.targetPos.set(p.pos.x, p.pos.y, p.pos.z);
         remote.targetYaw = p.yaw;
         remote.targetPitch = p.pitch;

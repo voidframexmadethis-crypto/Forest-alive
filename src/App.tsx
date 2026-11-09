@@ -277,6 +277,7 @@ export default function App() {
           onMoveRight={(val) => engineRef.current?.setMoveRight(val)}
           onUnlockPointer={() => canvasContainerRef.current?.requestPointerLock()}
           onOpenSandbox={handleOpenSandbox}
+          onExitMultiplayer={handleReturnMenu}
           multiplayerRoom={activeMultiplayerRoom}
           mySessionId={multiplayerClient.sessionId}
           ping={multiplayerClient.getPing()}

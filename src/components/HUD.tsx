@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PlayerStats, Weapon } from '../types/game';
 import { MultiplayerRoom } from '../types/multiplayer';
-import { Crosshair, Radio, RotateCw, Heart, Zap, Target, Users, Sliders } from 'lucide-react';
+import { Crosshair, Radio, RotateCw, Heart, Zap, Target, Users, Sliders, LogOut, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ExitConfirmationModal } from './ExitConfirmationModal';
 
 interface HUDProps {
   stats: PlayerStats;
@@ -19,6 +20,7 @@ interface HUDProps {
   onMoveRight: (val: boolean) => void;
   onUnlockPointer: () => void;
   onOpenSandbox?: () => void;
+  onExitMultiplayer?: () => void;
   multiplayerRoom?: MultiplayerRoom | null;
   mySessionId?: string | null;
   ping?: number;
@@ -47,12 +49,18 @@ export const HUD: React.FC<HUDProps> = ({
   onReload,
   onShoot,
   onSwitchWeaponSlot,
+  onMoveForward,
+  onMoveBackward,
+  onMoveLeft,
+  onMoveRight,
   onUnlockPointer,
   onOpenSandbox,
+  onExitMultiplayer,
   multiplayerRoom,
   mySessionId,
   ping
 }) => {
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState<boolean>(false);
   const unlockedList = stats.unlockedWeapons ? stats.unlockedWeapons.split(',') : [];
 
   const handleBarWheel = (e: React.WheelEvent) => {
@@ -220,6 +228,17 @@ export const HUD: React.FC<HUDProps> = ({
                   );
                 })}
               </div>
+
+              {/* In-Game Multiplayer Exit Button */}
+              {onExitMultiplayer && (
+                <button
+                  onClick={() => setIsExitConfirmOpen(true)}
+                  className="w-full mt-2.5 py-2 px-3 bg-red-950/80 hover:bg-red-900 border border-red-700/60 hover:border-red-500 rounded-lg text-xs font-bold font-['Chakra_Petch'] text-red-200 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-h-[44px]"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <span>EXIT MULTIPLAYER</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -253,9 +272,75 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* 4. BOTTOM LEFT: VITAL HEALTH (18 HEARTS) & STAMINA (Distraction-Free) */}
-      <div className="absolute bottom-5 left-5 flex flex-col gap-2.5 pointer-events-auto">
-        {/* Subtle Stance Badge (Crouch / Slide / Prone) only when active */}
+      {/* 4. BOTTOM LEFT: TACTICAL D-PAD (PS5/XBOX STYLE) & VITAL HEALTH */}
+      <div className="absolute bottom-20 left-8 flex items-end gap-10 pointer-events-none z-30">
+        {/* Unified Premium D-Pad Unit */}
+        <div className="pointer-events-auto relative w-44 h-44 bg-neutral-900/40 backdrop-blur-md rounded-full border border-white/5 shadow-2xl flex items-center justify-center">
+          {/* Inner Housing Detail */}
+          <div className="absolute inset-4 rounded-full border border-white/5 bg-neutral-950/40 shadow-inner" />
+          
+          {/* Cross Plate Housing (Cohesive unit look) */}
+          <div className="relative w-36 h-36 flex items-center justify-center">
+            
+            {/* UP BUTTON */}
+            <button
+              onMouseDown={() => onMoveForward(true)}
+              onMouseUp={() => onMoveForward(false)}
+              onMouseLeave={() => onMoveForward(false)}
+              onTouchStart={() => onMoveForward(true)}
+              onTouchEnd={() => onMoveForward(false)}
+              className="absolute top-0 w-12 h-14 rounded-t-xl bg-neutral-800 border-x-2 border-t-2 border-neutral-700 shadow-[0_-2px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.05)] active:bg-red-900/60 active:border-red-500/50 transition-all flex flex-col items-center justify-start pt-2 cursor-pointer group"
+            >
+              <div className="w-1 h-3 bg-neutral-700 rounded-full mb-1 group-active:bg-red-400 opacity-50" />
+              <ChevronUp className="w-6 h-6 text-neutral-400 group-active:text-white transition-colors" />
+            </button>
+
+            {/* DOWN BUTTON */}
+            <button
+              onMouseDown={() => onMoveBackward(true)}
+              onMouseUp={() => onMoveBackward(false)}
+              onMouseLeave={() => onMoveBackward(false)}
+              onTouchStart={() => onMoveBackward(true)}
+              onTouchEnd={() => onMoveBackward(false)}
+              className="absolute bottom-0 w-12 h-14 rounded-b-xl bg-neutral-800 border-x-2 border-b-2 border-neutral-700 shadow-[0_2px_10px_rgba(0,0,0,0.5),inset_0_-2px_4px_rgba(255,255,255,0.05)] active:bg-red-900/60 active:border-red-500/50 transition-all flex flex-col items-center justify-end pb-2 cursor-pointer group"
+            >
+              <ChevronDown className="w-6 h-6 text-neutral-400 group-active:text-white transition-colors" />
+              <div className="w-1 h-3 bg-neutral-700 rounded-full mt-1 group-active:bg-red-400 opacity-50" />
+            </button>
+
+            {/* LEFT BUTTON */}
+            <button
+              onMouseDown={() => onMoveLeft(true)}
+              onMouseUp={() => onMoveLeft(false)}
+              onMouseLeave={() => onMoveLeft(false)}
+              onTouchStart={() => onMoveLeft(true)}
+              onTouchEnd={() => onMoveLeft(false)}
+              className="absolute left-0 w-14 h-12 rounded-l-xl bg-neutral-800 border-y-2 border-l-2 border-neutral-700 shadow-[-2px_0_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.05)] active:bg-red-900/60 active:border-red-500/50 transition-all flex items-center justify-start pl-2 cursor-pointer group"
+            >
+              <div className="w-3 h-1 bg-neutral-700 rounded-full mr-1 group-active:bg-red-400 opacity-50" />
+              <ChevronLeft className="w-6 h-6 text-neutral-400 group-active:text-white transition-colors" />
+            </button>
+
+            {/* RIGHT BUTTON */}
+            <button
+              onMouseDown={() => onMoveRight(true)}
+              onMouseUp={() => onMoveRight(false)}
+              onMouseLeave={() => onMoveRight(false)}
+              onTouchStart={() => onMoveRight(true)}
+              onTouchEnd={() => onMoveRight(false)}
+              className="absolute right-0 w-14 h-12 rounded-r-xl bg-neutral-800 border-y-2 border-r-2 border-neutral-700 shadow-[2px_0_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.05)] active:bg-red-900/60 active:border-red-500/50 transition-all flex items-center justify-end pr-2 cursor-pointer group"
+            >
+              <ChevronRight className="w-6 h-6 text-neutral-400 group-active:text-white transition-colors" />
+              <div className="w-3 h-1 bg-neutral-700 rounded-full ml-1 group-active:bg-red-400 opacity-50" />
+            </button>
+
+            {/* CENTRAL HUB DETAIL */}
+            <div className="w-10 h-10 bg-neutral-800 border-2 border-neutral-700 shadow-inner z-10 rounded-sm pointer-events-none" />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5 pointer-events-auto">
+          {/* Subtle Stance Badge (Crouch / Slide / Prone) only when active */}
         {(stats.isCrouched || stats.isProne || stats.isSliding) && (
           <div className="bg-red-950/90 border border-red-500/60 px-2.5 py-1 rounded-md font-['Chakra_Petch'] text-[10px] font-bold text-red-200 tracking-wider animate-pulse flex items-center gap-1.5 w-max shadow-md">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
@@ -324,12 +409,13 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
       </div>
+      </div>
 
       {/* 5. DOCKED BOTTOM WEAPONS HOTBAR (AWAY AT THE BOTTOM / SCROLL WHEEL) */}
       {unlockedList.length > 0 && (
         <div 
           onWheel={handleBarWheel}
-          className="absolute bottom-2.5 inset-x-0 mx-auto w-max max-w-[94vw] flex flex-col items-center gap-1 pointer-events-auto z-30"
+          className="absolute bottom-18 inset-x-0 mx-auto w-max max-w-[94vw] flex flex-col items-center gap-1 pointer-events-auto z-30"
         >
           {/* Subtle scroll wheel & slot indicator */}
           <div className="flex items-center gap-2 text-[10px] font-mono tracking-wider text-neutral-400 bg-black/60 px-3 py-0.5 rounded-full border border-neutral-800/60 backdrop-blur-sm">
@@ -373,7 +459,7 @@ export const HUD: React.FC<HUDProps> = ({
       )}
 
       {/* 6. BOTTOM RIGHT: SHOOTING BUTTON & RELOAD BUTTON (KEPT WHERE THEY ARE) */}
-      <div className="absolute bottom-5 right-5 flex flex-col items-end gap-2.5 pointer-events-auto z-30">
+      <div className="absolute bottom-20 right-8 flex flex-col items-end gap-2.5 pointer-events-auto z-30">
         {/* Compact Ammo Display */}
         <div className="bg-black/70 backdrop-blur-md border border-neutral-800/80 px-4 py-2.5 rounded-xl text-right min-w-[170px] shadow-lg">
           <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest font-['Chakra_Petch'] truncate">
@@ -416,6 +502,18 @@ export const HUD: React.FC<HUDProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Exit Multiplayer Confirmation Modal */}
+      <ExitConfirmationModal
+        isOpen={isExitConfirmOpen}
+        title="EXIT MULTIPLAYER?"
+        message="Are you sure you want to leave this multiplayer co-op match and return to the main menu?"
+        onConfirm={() => {
+          setIsExitConfirmOpen(false);
+          onExitMultiplayer?.();
+        }}
+        onCancel={() => setIsExitConfirmOpen(false)}
+      />
 
     </div>
   );

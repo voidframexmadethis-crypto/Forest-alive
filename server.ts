@@ -298,8 +298,35 @@ wss.on('connection', (ws: WebSocket, request) => {
           break;
         }
 
+        case 'change_character': {
+          if (!client.roomCode) return;
+          const room = rooms.get(client.roomCode);
+          if (!room) return;
+          const player = room.players[sessionId];
+          if (!player) return;
+
+          player.characterId = msg.characterId;
+          console.log(`[Multiplayer] Player ${player.name} (${sessionId}) switched avatar to ${msg.characterId}`);
+
+          broadcastToRoom(client.roomCode, {
+            type: 'character_changed',
+            sessionId,
+            characterId: msg.characterId
+          });
+
+          broadcastToRoom(client.roomCode, {
+            type: 'room_update',
+            room
+          });
+          break;
+        }
+
         case 'leave_room': {
           handlePlayerLeaveRoom(sessionId);
+          sendToClient(ws, {
+            type: 'player_left',
+            sessionId
+          });
           break;
         }
 
