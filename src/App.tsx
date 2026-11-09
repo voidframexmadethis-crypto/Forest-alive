@@ -5,33 +5,25 @@ import { WEAPONS_DATABASE } from './game/weapons';
 import { MainMenu } from './components/MainMenu';
 import { HUD } from './components/HUD';
 import { SafehouseUI } from './components/SafehouseUI';
-import { CutsceneModal, CutsceneStoryType } from './components/CutsceneModal';
-import { OpeningCinematicModal } from './components/OpeningCinematicModal';
+import { CutsceneModal } from './components/CutsceneModal';
 import { GameOverModal } from './components/GameOverModal';
 import { soundEngine } from './game/audio';
 import { SandboxModal, FPSConfig } from './components/SandboxModal';
-import { MultiplayerLobbyModal } from './components/MultiplayerLobbyModal';
+import { MultiplayerModal } from './components/MultiplayerModal';
+import { multiplayerClient } from './game/multiplayerClient';
 import { MultiplayerRoom } from './types/multiplayer';
 import { HumanCharacterId } from './game/characterMesh';
-import { networkClient } from './game/multiplayer/NetworkClient';
-import { ModManagerModal } from './components/ModManagerModal';
-import { ModManager } from './game/modManager';
 
 export default function App() {
-  const [gameState, setGameState] = useState<GameState>(() => {
-    const seen = localStorage.getItem('forest_alive_seen_opening');
-    return seen ? 'menu' : 'opening_cinematic';
-  });
+  const [gameState, setGameState] = useState<GameState>('menu');
   const [mode, setMode] = useState<GameMode>('blood_harvest');
   const [forestType, setForestType] = useState<ForestType>('pine_dark');
   const [difficulty, setDifficulty] = useState<Difficulty>('realism');
-  const [singlePlayerCharacter, setSinglePlayerCharacter] = useState<HumanCharacterId>('titan');
 
-  // Multiplayer State
-  const [isMultiplayerLobbyOpen, setIsMultiplayerLobbyOpen] = useState<boolean>(false);
-  const [isMultiplayerActive, setIsMultiplayerActive] = useState<boolean>(false);
-  const [multiplayerRoom, setMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
-  const [multiplayerLocalId, setMultiplayerLocalId] = useState<string | null>(null);
+  // Multiplayer squad state
+  const [isMultiplayerModalOpen, setIsMultiplayerModalOpen] = useState<boolean>(false);
+  const [isMultiplayerMatch, setIsMultiplayerMatch] = useState<boolean>(false);
+  const [activeMultiplayerRoom, setActiveMultiplayerRoom] = useState<MultiplayerRoom | null>(null);
 
   const [playerStats, setPlayerStats] = useState<PlayerStats>({
     health: 100,
@@ -65,7 +57,6 @@ export default function App() {
   const [isVictory, setIsVictory] = useState<boolean>(false);
 
   const [isSandboxOpen, setIsSandboxOpen] = useState<boolean>(false);
-  const [isModManagerOpen, setIsModManagerOpen] = useState<boolean>(false);
   const [fpsConfig, setFpsConfig] = useState<FPSConfig>({
     mouseSensitivity: 0.0022,
     baseSpeed: 6.0,
@@ -83,8 +74,7 @@ export default function App() {
     cameraRollWeight: 0.008
   });
 
-  const [cutsceneType, setCutsceneType] = useState<CutsceneStoryType>('weapon_prep');
-  const [isMenuCinematic, setIsMenuCinematic] = useState<boolean>(false);
+  const [cutsceneType, setCutsceneType] = useState<'weapon_prep' | 'tank_escape'>('weapon_prep');
 
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -102,97 +92,41 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    networkClient.setListeners({
-      onRoomUpdate: (room) => setMultiplayerRoom(room),
-      // @ts-ignore
-      onStoryEventTriggered: (msg: any) => {
-        if (msg.event === 'katrina_labor') {
-          setCutsceneType('katrina_labor_event');
-          setGameState('intro_cutscene');
-        } else if (msg.event === 'campaign_complete') {
-          setGameState('campaign_complete');
-        }
-      }
-    });
-  }, []);
-
   const handleStartGame = (selectedMode: GameMode, selectedForest: ForestType, selectedDifficulty: Difficulty) => {
+    setIsMultiplayerMatch(false);
+    setActiveMultiplayerRoom(null);
     setMode(selectedMode);
     setForestType(selectedForest);
     setDifficulty(selectedDifficulty);
-
-    // Check once-per-save storage for titan intro
-    const hasSeenTitanIntro = localStorage.getItem('forest_alive_seen_titan_intro');
-    if (!hasSeenTitanIntro) {
-      localStorage.setItem('forest_alive_seen_titan_intro', 'true');
-      setCutsceneType('titan_intro');
-      setIsMenuCinematic(false);
-    } else {
-      setCutsceneType('weapon_prep');
-      setIsMenuCinematic(false);
-    }
+    setCutsceneType('weapon_prep');
     setGameState('intro_cutscene');
   };
 
-  const handleWatchCinematic = (type: CutsceneStoryType) => {
-    setCutsceneType(type);
-    setIsMenuCinematic(true);
-    setGameState('intro_cutscene');
-  };
-
-  const handleOpeningCinematicComplete = () => {
-    localStorage.setItem('forest_alive_seen_opening', 'true');
-    setGameState('menu');
-  };
-
-  const handleReplayOpeningCinematic = () => {
-    setGameState('opening_cinematic');
+  const handleLaunchMultiplayerGame = (room: MultiplayerRoom) => {
+    setIsMultiplayerMatch(true);
+    setActiveMultiplayerRoom({ ...room });
+    setMode(room.mode);
+    setForestType(room.forestType);
+    setDifficulty(room.difficulty);
+    setIsMultiplayerModalOpen(false);
+    setGameState('playing');
+    setTimeout(() => {
+      initGameEngine(true, multiplayerClient.myCharacterId);
+    }, 50);
   };
 
   const handleCutsceneComplete = () => {
-    if (isMenuCinematic) {
-      setGameState('menu');
-      return;
-    }
-
-    if (cutsceneType === 'titan_intro') {
-      // Transition from Titan Intro to Weapon Prep
-      setCutsceneType('weapon_prep');
-      setGameState('intro_cutscene');
-    } else if (cutsceneType === 'weapon_prep') {
+    if (cutsceneType === 'weapon_prep') {
       setGameState('playing');
       setTimeout(() => {
-        initGameEngine();
+        initGameEngine(isMultiplayerMatch, isMultiplayerMatch ? multiplayerClient.myCharacterId : 'titan');
       }, 50);
     } else {
       setGameState('victory');
     }
   };
 
-  const handleOpenMultiplayer = () => {
-    setIsMultiplayerLobbyOpen(true);
-  };
-
-  const handleCloseMultiplayerLobby = () => {
-    setIsMultiplayerLobbyOpen(false);
-  };
-
-  const handleStartMultiplayerGame = (room: MultiplayerRoom, localId: string) => {
-    setIsMultiplayerLobbyOpen(false);
-    setIsMultiplayerActive(true);
-    setMultiplayerRoom(room);
-    setMultiplayerLocalId(localId);
-    setMode(room.mode);
-    setForestType(room.forestType);
-    setDifficulty(room.difficulty);
-    setGameState('playing');
-    setTimeout(() => {
-      initGameEngine({ isMultiplayer: true, room, localId });
-    }, 50);
-  };
-
-  const initGameEngine = (options?: { isMultiplayer?: boolean; room?: MultiplayerRoom | null; localId?: string | null }) => {
+  const initGameEngine = (isMultiplayer: boolean = false, avatarId: HumanCharacterId = 'titan') => {
     if (!canvasContainerRef.current) return;
 
     if (engineRef.current) {
@@ -200,15 +134,10 @@ export default function App() {
       engineRef.current = null;
     }
 
-    const isMulti = options?.isMultiplayer || false;
-    const room = options?.room || multiplayerRoom;
-    const localId = options?.localId || multiplayerLocalId;
-    const selectedChar = (room && localId && room.players[localId]?.characterId) || 'titan';
-
     engineRef.current = new GameEngine(
       canvasContainerRef.current,
-      room ? room.mode : mode,
-      room ? room.forestType : forestType,
+      mode,
+      forestType,
       {
         onStatsChange: (s) => setPlayerStats({ ...s }),
         onWeaponChange: (w) => setCurrentWeapon({ ...w }),
@@ -224,12 +153,8 @@ export default function App() {
           setGameState('safehouse_rest');
         }
       },
-      {
-        isMultiplayer: isMulti,
-        multiplayerRoom: room,
-        localPlayerId: localId,
-        selectedCharacter: isMulti ? (selectedChar as HumanCharacterId) : singlePlayerCharacter
-      }
+      avatarId,
+      isMultiplayer
     );
 
     // Synchronize initial customized physics parameters
@@ -275,7 +200,7 @@ export default function App() {
     }
     setGameState('playing');
     setTimeout(() => {
-      initGameEngine({ isMultiplayer: isMultiplayerActive, room: multiplayerRoom, localId: multiplayerLocalId });
+      initGameEngine();
     }, 50);
   };
 
@@ -284,11 +209,10 @@ export default function App() {
       engineRef.current.dispose();
       engineRef.current = null;
     }
-    if (isMultiplayerActive) {
-      networkClient.leaveRoom();
-      setIsMultiplayerActive(false);
-      setMultiplayerRoom(null);
-      setMultiplayerLocalId(null);
+    if (isMultiplayerMatch) {
+      multiplayerClient.leaveRoom();
+      setIsMultiplayerMatch(false);
+      setActiveMultiplayerRoom(null);
     }
     setGameState('menu');
   };
@@ -303,32 +227,21 @@ export default function App() {
   };
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden">
+    <div className="relative w-full h-screen bg-black overflow-hidden font-['Plus_Jakarta_Sans']">
       
-      {/* 0. OPENING CINEMATIC MOVIE */}
-      {gameState === 'opening_cinematic' && (
-        <OpeningCinematicModal onComplete={handleOpeningCinematicComplete} />
-      )}
-
-
       {/* 1. MAIN MENU */}
       {gameState === 'menu' && (
         <MainMenu 
           onStartGame={handleStartGame} 
-          onWatchCinematic={handleWatchCinematic} 
-          onReplayOpening={handleReplayOpeningCinematic}
-          onOpenMultiplayer={handleOpenMultiplayer}
-          selectedCharacter={singlePlayerCharacter}
-          onSelectCharacter={setSinglePlayerCharacter}
+          onOpenMultiplayer={() => setIsMultiplayerModalOpen(true)}
         />
       )}
 
-      {/* 1.5 COOPERATIVE MULTIPLAYER LOBBY MODAL */}
-      {isMultiplayerLobbyOpen && (
-        <MultiplayerLobbyModal 
-          onClose={handleCloseMultiplayerLobby}
-          onStartMultiplayerGame={handleStartMultiplayerGame}
-          onPlayCinematic={() => handleWatchCinematic('titan_intro')}
+      {/* 1.5 ONLINE MULTIPLAYER CO-OP MODAL */}
+      {isMultiplayerModalOpen && (
+        <MultiplayerModal 
+          onClose={() => setIsMultiplayerModalOpen(false)}
+          onLaunchGame={handleLaunchMultiplayerGame}
         />
       )}
 
@@ -364,14 +277,9 @@ export default function App() {
           onMoveRight={(val) => engineRef.current?.setMoveRight(val)}
           onUnlockPointer={() => canvasContainerRef.current?.requestPointerLock()}
           onOpenSandbox={handleOpenSandbox}
-          onOpenModManager={() => setIsModManagerOpen(true)}
-          isMultiplayer={isMultiplayerActive}
-          downedTeammateName={engineRef.current?.getNearbyDownedTeammate()?.name || null}
-          onRevive={() => engineRef.current?.interact()}
-          onLeaveMultiplayer={handleReturnMenu}
-          onCallGoldenEagle={() => engineRef.current?.callGoldenEagle()}
-          onBoardGoldenEagle={() => engineRef.current?.interact()}
-          onTriggerHydraulics={() => engineRef.current?.triggerGoldenEagleHydraulics()}
+          multiplayerRoom={activeMultiplayerRoom}
+          mySessionId={multiplayerClient.sessionId}
+          ping={multiplayerClient.getPing()}
         />
       )}
 
@@ -381,24 +289,6 @@ export default function App() {
           config={fpsConfig}
           onChange={handleSandboxConfigChange}
           onClose={handleCloseSandbox}
-        />
-      )}
-
-      {/* 4.6 MOD MANAGER MODAL */}
-      {isModManagerOpen && (
-        <ModManagerModal 
-          onClose={() => setIsModManagerOpen(false)}
-          onModsUpdated={() => {
-            // Refresh weapons when mods updated in-game
-            if (engineRef.current) {
-              const activeMods = ModManager.getActiveModWeapons();
-              activeMods.forEach((m: Weapon) => {
-                if (!engineRef.current?.availableWeapons.some(w => w.id === m.id)) {
-                  engineRef.current?.availableWeapons.push(m);
-                }
-              });
-            }
-          }}
         />
       )}
 

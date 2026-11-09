@@ -1,82 +1,155 @@
-import { Difficulty, ForestType, GameMode } from './game';
+import { Difficulty, ForestType, GameMode, WeaponType } from './game';
 import { HumanCharacterId } from '../game/characterMesh';
 
-export interface NetworkPlayer {
-  id: string;
+export interface MultiplayerPlayer {
+  sessionId: string;
   name: string;
-  characterId: HumanCharacterId | null;
-  isReady: boolean;
+  characterId: HumanCharacterId;
   isHost: boolean;
   ping: number;
-  position: { x: number; y: number; z: number };
-  rotation: { yaw: number; pitch: number; roll: number };
-  stance: 'standing' | 'crouching' | 'prone' | 'sliding' | 'sprinting';
-  isAiming: boolean;
-  isShooting: boolean;
-  isReloading: boolean;
-  weaponId: string;
+  pos: { x: number; y: number; z: number };
+  yaw: number;
+  pitch: number;
+  stance: 'standing' | 'crouched' | 'prone' | 'sliding' | 'diving';
+  isSprinting: boolean;
+  currentWeapon: WeaponType;
   health: number;
   maxHealth: number;
-  isDowned: boolean;
-  isDead: boolean;
-  kills: number;
+  lastUpdate: number;
 }
 
 export interface MultiplayerRoom {
-  code: string;
-  hostId: string;
-  maxPlayers: number;
+  roomCode: string;
+  hostSessionId: string;
+  players: Record<string, MultiplayerPlayer>;
   mode: GameMode;
   forestType: ForestType;
   difficulty: Difficulty;
-  status: 'lobby' | 'cinematic' | 'in_game' | 'game_over' | 'victory';
-  players: Record<string, NetworkPlayer>;
+  status: 'lobby' | 'playing';
   createdAt: number;
-  successionEventComplete: boolean;
-  completedMissions: number;
-  currentMission: number;
-  isCampaignComplete: boolean;
-  natashaSkillLevel: number;
 }
 
-export interface SyncedCreature {
-  id: string;
-  type: string;
-  position: { x: number; y: number; z: number };
-  rotation: number;
-  health: number;
-  maxHealth: number;
-  state: string;
-  targetPlayerId?: string;
-}
+export type ClientToServerMessage =
+  | {
+      type: 'create_room';
+      playerName: string;
+      characterId: HumanCharacterId;
+      mode: GameMode;
+      forestType: ForestType;
+      difficulty: Difficulty;
+    }
+  | {
+      type: 'join_room';
+      roomCode: string;
+      playerName: string;
+      characterId: HumanCharacterId;
+    }
+  | {
+      type: 'leave_room';
+    }
+  | {
+      type: 'start_game';
+    }
+  | {
+      type: 'player_update';
+      pos: { x: number; y: number; z: number };
+      yaw: number;
+      pitch: number;
+      stance: 'standing' | 'crouched' | 'prone' | 'sliding' | 'diving';
+      isSprinting: boolean;
+      currentWeapon: WeaponType;
+      health: number;
+    }
+  | {
+      type: 'player_shoot';
+      origin: { x: number; y: number; z: number };
+      direction: { x: number; y: number; z: number };
+      weaponId: WeaponType;
+      hitCreatureId?: string;
+      damage?: number;
+      isHeadshot?: boolean;
+      hitPoint?: { x: number; y: number; z: number };
+    }
+  | {
+      type: 'creature_damage';
+      creatureId: string;
+      damage: number;
+      isHeadshot?: boolean;
+    }
+  | {
+      type: 'chat';
+      text: string;
+    }
+  | {
+      type: 'ping';
+      timestamp: number;
+    };
 
-export type ClientMessage =
-  | { type: 'create_room'; name: string; characterId?: HumanCharacterId; mode: GameMode; forestType: ForestType; difficulty: Difficulty }
-  | { type: 'join_room'; code: string; name: string; characterId?: HumanCharacterId }
-  | { type: 'leave_room' }
-  | { type: 'select_character'; characterId: HumanCharacterId }
-  | { type: 'toggle_ready'; isReady: boolean }
-  | { type: 'start_game' }
-  | { type: 'player_update'; data: Partial<NetworkPlayer> }
-  | { type: 'shoot_bullet'; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; weaponId: string; hitPoint?: { x: number; y: number; z: number } }
-  | { type: 'creature_damage'; creatureId: string; damage: number; hitLocation?: string }
-  | { type: 'sync_creatures'; creatures: SyncedCreature[] }
-  | { type: 'revive_player'; targetPlayerId: string }
-  | { type: 'complete_mission' }
-  | { type: 'story_event_trigger'; event: 'katrina_labor' | 'campaign_complete' }
-  | { type: 'ping'; timestamp: number };
-
-export type ServerMessage =
-  | { type: 'room_created'; room: MultiplayerRoom; playerId: string }
-  | { type: 'room_joined'; room: MultiplayerRoom; playerId: string }
-  | { type: 'room_update'; room: MultiplayerRoom }
-  | { type: 'game_started'; room: MultiplayerRoom }
-  | { type: 'player_update'; playerId: string; data: Partial<NetworkPlayer> }
-  | { type: 'bullet_fired'; playerId: string; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; weaponId: string; hitPoint?: { x: number; y: number; z: number } }
-  | { type: 'creatures_synced'; creatures: SyncedCreature[] }
-  | { type: 'creature_damage'; playerId: string; creatureId: string; damage: number; hitLocation?: string }
-  | { type: 'player_downed'; playerId: string; playerName: string; characterId: string }
-  | { type: 'player_revived'; reviverId: string; targetId: string }
-  | { type: 'story_event_triggered'; event: 'katrina_labor' | 'campaign_complete' }
-  | { type: 'error'; message: string }
-  | { type: 'pong'; timestamp: number };
+export type ServerToClientMessage =
+  | {
+      type: 'connected';
+      sessionId: string;
+    }
+  | {
+      type: 'room_created';
+      room: MultiplayerRoom;
+      sessionId: string;
+    }
+  | {
+      type: 'room_joined';
+      room: MultiplayerRoom;
+      sessionId: string;
+    }
+  | {
+      type: 'room_update';
+      room: MultiplayerRoom;
+    }
+  | {
+      type: 'player_joined';
+      player: MultiplayerPlayer;
+    }
+  | {
+      type: 'player_left';
+      sessionId: string;
+      newHostId?: string;
+    }
+  | {
+      type: 'game_started';
+      room: MultiplayerRoom;
+    }
+  | {
+      type: 'players_sync';
+      players: Record<string, MultiplayerPlayer>;
+    }
+  | {
+      type: 'remote_shoot';
+      sessionId: string;
+      playerName: string;
+      origin: { x: number; y: number; z: number };
+      direction: { x: number; y: number; z: number };
+      weaponId: WeaponType;
+      hitPoint?: { x: number; y: number; z: number };
+    }
+  | {
+      type: 'creature_damaged';
+      creatureId: string;
+      damage: number;
+      attackerSessionId: string;
+      attackerName: string;
+      isHeadshot?: boolean;
+    }
+  | {
+      type: 'chat_broadcast';
+      senderName: string;
+      text: string;
+      timestamp: number;
+    }
+  | {
+      type: 'error';
+      message: string;
+      code?: string;
+    }
+  | {
+      type: 'pong';
+      timestamp: number;
+    };

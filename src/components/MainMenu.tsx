@@ -1,30 +1,21 @@
 import React, { useState } from 'react';
 import { Difficulty, ForestType, GameMode } from '../types/game';
-import { Play, Shield, Flame, Crosshair, Skull, Volume2, VolumeX, Eye, Radio, BookOpen, X, Film, Users, Sparkles, Home, Heart, ShieldAlert, User, Cpu } from 'lucide-react';
+import { Play, Shield, Flame, Crosshair, Skull, Volume2, VolumeX, Eye, Radio, BookOpen, X, Users } from 'lucide-react';
 import { soundEngine } from '../game/audio';
-import { CutsceneStoryType } from './CutsceneModal';
-import { HumanCharacterId } from '../game/characterMesh';
-import { ModManagerModal } from './ModManagerModal';
 
 interface MainMenuProps {
   onStartGame: (mode: GameMode, forest: ForestType, difficulty: Difficulty) => void;
-  onWatchCinematic?: (type: CutsceneStoryType) => void;
-  onReplayOpening?: () => void;
   onOpenMultiplayer: () => void;
-  selectedCharacter: HumanCharacterId;
-  onSelectCharacter: (id: HumanCharacterId) => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinematic, onReplayOpening, onOpenMultiplayer, selectedCharacter, onSelectCharacter }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onOpenMultiplayer }) => {
   const [selectedMode, setSelectedMode] = useState<GameMode>('blood_harvest');
   const [selectedForest, setSelectedForest] = useState<ForestType>('pine_dark');
   const [difficulty, setDifficulty] = useState<Difficulty>('realism');
   const [isMuted, setIsMuted] = useState<boolean>(soundEngine.getMuted());
 
-  // Tactical Developer Manual & Mod Manager State
+  // Tactical Developer Manual State
   const [isManualOpen, setIsManualOpen] = useState<boolean>(false);
-  const [isModManagerOpen, setIsModManagerOpen] = useState<boolean>(false);
-  const [isCinematicCatalogOpen, setIsCinematicCatalogOpen] = useState<boolean>(false);
   const [manualTab, setManualTab] = useState<'movement' | 'gunplay' | 'blueprints' | 'feedback'>('movement');
   const [engineSelection, setEngineSelection] = useState<'unity' | 'ue5' | 'godot'>('unity');
 
@@ -65,80 +56,49 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
   ];
 
   return (
-    <div className="absolute inset-0 w-full h-full bg-black text-white overflow-y-auto select-none font-['Plus_Jakarta_Sans']">
+    <div className="relative w-full h-screen bg-black text-white overflow-y-auto select-none font-['Plus_Jakarta_Sans']">
       {/* Dynamic Dark Background Key Art */}
       <div 
-        className="absolute inset-0 bg-cover bg-center opacity-35 scale-105 filter blur-sm transition-all duration-700 pointer-events-none"
+        className="fixed inset-0 bg-cover bg-center opacity-35 scale-105 filter blur-sm transition-all duration-700 pointer-events-none"
         style={{ backgroundImage: `url('/src/assets/images/military_zombie_v2_1790925959610.jpg')` }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/40 pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-t from-black via-black/70 to-black/40 pointer-events-none" />
 
       {/* Content Container */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8 flex flex-col justify-between min-h-screen">
         
         {/* Header Contract */}
-        <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-red-900/30 pb-4 gap-4">
+        <header className="flex items-center justify-between border-b border-red-900/30 pb-4">
           <div className="flex items-center gap-3">
             <Flame className="w-8 h-8 text-red-600 animate-pulse" />
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-wider text-red-500 font-['Chakra_Petch']">
+            <h1 className="text-3xl font-extrabold tracking-wider text-red-500 font-['Chakra_Petch']">
               DARK FORCE ALIVE
             </h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => { soundEngine.playMechanicalClick(0.6, 1400); onOpenMultiplayer(); }}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-cyan-950 via-cyan-900 to-blue-950 border border-cyan-400 hover:border-cyan-200 rounded text-[10px] font-black text-cyan-200 tracking-wider transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] animate-pulse"
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-red-950 via-neutral-900 to-red-950 border border-red-500 hover:border-amber-400 rounded text-xs font-extrabold text-white tracking-wider transition-all shadow-[0_0_15px_rgba(220,38,38,0.35)] cursor-pointer"
             >
-              <Users className="w-3.5 h-3.5 text-cyan-400" />
-              <span>CO-OP MULTIPLAYER (5P)</span>
-            </button>
-
-            {onReplayOpening && (
-              <button
-                onClick={() => { soundEngine.playMechanicalClick(0.6, 1300); onReplayOpening(); }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-amber-950/80 border border-amber-600 hover:border-amber-400 rounded text-[10px] font-extrabold text-amber-200 tracking-wider transition-colors shadow-lg"
-              >
-                <Film className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span className="hidden sm:inline">REPLAY MOVIE</span>
-                <span className="sm:hidden">MOVIE</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => { soundEngine.playMechanicalClick(0.6, 1100); setIsCinematicCatalogOpen(true); }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-red-950/90 border border-red-600 hover:border-red-400 rounded text-[10px] font-extrabold text-red-200 tracking-wider transition-colors shadow-lg"
-            >
-              <Film className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-              <span className="hidden sm:inline">CINEMATIC CAMPAIGN</span>
-              <span className="sm:hidden">CAMPAIGN</span>
-            </button>
-
-            <button
-              onClick={() => { soundEngine.playMechanicalClick(0.6, 1200); setIsModManagerOpen(true); }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 border border-amber-600/60 hover:border-amber-500 rounded text-[10px] font-extrabold text-amber-300 tracking-wider transition-colors shadow-md"
-            >
-              <Cpu className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="hidden sm:inline">MOD MANAGER & IMPORTER</span>
-              <span className="sm:hidden">MODS</span>
+              <Users className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span>ONLINE MULTIPLAYER CO-OP</span>
             </button>
 
             <button
               onClick={() => { soundEngine.playMechanicalClick(0.6, 1200); setIsManualOpen(true); }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 border border-neutral-800 hover:border-neutral-600 rounded text-[10px] font-extrabold text-neutral-300 tracking-wider transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-red-950/80 border border-red-800 hover:border-red-500 rounded text-xs font-extrabold text-red-200 tracking-wider transition-colors"
             >
-              <BookOpen className="w-3.5 h-3.5 text-neutral-400" />
-              <span className="hidden sm:inline">TACTICAL MANUAL</span>
-              <span className="sm:hidden">MANUAL</span>
+              <BookOpen className="w-4 h-4 text-red-400" />
+              <span>TACTICAL FPS MANUAL & BLUEPRINTS</span>
             </button>
 
             <button
               onClick={handleToggleMute}
-              className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded text-[10px] font-semibold hover:border-red-600 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded text-xs font-semibold hover:border-red-600 transition-colors"
             >
-              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-500" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-500" />}
-              <span className="hidden sm:inline">{isMuted ? 'MUTED' : 'AUDIO ACTIVE'}</span>
-              <span className="sm:hidden">{isMuted ? 'OFF' : 'ON'}</span>
+              {isMuted ? <VolumeX className="w-4 h-4 text-red-500" /> : <Volume2 className="w-4 h-4 text-emerald-500" />}
+              <span>{isMuted ? 'AUDIO MUTED' : 'AUDIO ACTIVE'}</span>
             </button>
           </div>
         </header>
@@ -187,67 +147,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
                 );
               })}
             </div>
-
-            {/* Real Online Multiplayer Mode Card */}
-            <div 
-              onClick={() => { soundEngine.playMechanicalClick(0.7, 1300); onOpenMultiplayer(); }}
-              className="cursor-pointer group relative overflow-hidden rounded-xl border border-cyan-500/50 bg-gradient-to-r from-cyan-950/80 via-blue-950/70 to-neutral-950/90 p-4 transition-all hover:border-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.35)] mt-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 group-hover:scale-110 transition-transform shrink-0">
-                    <Users className="w-5 h-5 text-cyan-400" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-white font-['Chakra_Petch'] tracking-wide">
-                        MULTIPLAYER CO-OP (UP TO 5 SURVIVORS)
-                      </span>
-                      <span className="text-[9px] bg-cyan-500/30 text-cyan-300 border border-cyan-400 px-1.5 py-0.2 rounded font-mono font-bold">
-                        ROOM CODES
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-cyan-200/80 font-mono mt-0.5">
-                      Join room with friends · Play Titan, Katrina, Natasha, Bill, Luis · Synchronized combat & proximity revive
-                    </p>
-                  </div>
-                </div>
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-cyan-500/20 border border-cyan-400 rounded text-[10px] font-bold text-cyan-200 group-hover:bg-cyan-500 group-hover:text-black transition-colors font-mono shrink-0">
-                  ENTER LOBBY →
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Environment & Parameters Panel (5 Cols) */}
           <div className="lg:col-span-5 bg-neutral-950/80 border border-neutral-800 rounded-xl p-6 space-y-6">
-            <div>
-              <h3 className="text-sm font-bold tracking-widest text-neutral-400 uppercase font-['Chakra_Petch'] flex items-center gap-2 mb-3">
-                <User className="w-4 h-4 text-red-500" /> Select Character
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'titan', label: 'TITAN' },
-                  { id: 'katrina', label: 'KATRINA' },
-                  { id: 'natasha', label: 'NATASHA' },
-                  { id: 'bill', label: 'BILL' },
-                  { id: 'luis', label: 'LUIS' }
-                ].map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => onSelectCharacter?.(c.id as HumanCharacterId)}
-                    className={`p-3 rounded-lg border text-left transition-all ${
-                      selectedCharacter === c.id
-                        ? 'bg-red-950/40 border-red-500 text-white'
-                        : 'bg-neutral-900/60 border-neutral-800 text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    <div className="text-xs font-bold font-['Chakra_Petch']">{c.label}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div>
               <h3 className="text-sm font-bold tracking-widest text-neutral-400 uppercase font-['Chakra_Petch'] flex items-center gap-2 mb-3">
                 <Eye className="w-4 h-4 text-red-500" /> Forest Environment Type
@@ -320,13 +223,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
               </ul>
             </div>
 
-            {/* Deploy Button */}
-            <button
-              onClick={() => onStartGame(selectedMode, selectedForest, difficulty)}
-              className="w-full py-4 bg-gradient-to-r from-red-700 via-red-600 to-red-700 hover:from-red-600 hover:to-red-800 text-white font-extrabold text-base tracking-widest rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.4)] transition-all transform active:scale-95 flex items-center justify-center gap-3 font-['Chakra_Petch']"
-            >
-              <Play className="w-5 h-5 fill-white" /> DEPLOY TO SURVIVAL ZONE
-            </button>
+            {/* Action Buttons: Multiplayer and Single-Player Solo Campaign */}
+            <div className="space-y-3">
+              <button
+                onClick={() => { soundEngine.playMechanicalClick(0.6, 1400); onOpenMultiplayer(); }}
+                className="w-full py-4 bg-gradient-to-r from-red-950 via-neutral-900 to-red-950 hover:bg-neutral-800 border-2 border-red-500 hover:border-red-400 text-white font-extrabold text-sm tracking-widest rounded-xl shadow-[0_0_25px_rgba(220,38,38,0.3)] transition-all transform active:scale-95 flex items-center justify-center gap-3 font-['Chakra_Petch'] cursor-pointer"
+              >
+                <Users className="w-5 h-5 text-red-500 animate-pulse" />
+                <span>ONLINE MULTIPLAYER CO-OP (ROOM CODES)</span>
+              </button>
+
+              <button
+                onClick={() => onStartGame(selectedMode, selectedForest, difficulty)}
+                className="w-full py-3.5 bg-gradient-to-r from-red-700 via-red-600 to-red-700 hover:from-red-600 hover:to-red-800 text-white font-extrabold text-sm tracking-widest rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all transform active:scale-95 flex items-center justify-center gap-3 font-['Chakra_Petch'] cursor-pointer"
+              >
+                <Play className="w-4 h-4 fill-white" /> SOLO CAMPAIGN: TITAN'S SURVIVAL
+              </button>
+            </div>
           </div>
         </main>
 
@@ -340,7 +253,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onWatchCinemati
       {/* 3D FPS GAMEPLAY DEVELOPER MANUAL MODAL    */}
       {/* ========================================== */}
       {isManualOpen && (
-        <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 overflow-hidden font-['Plus_Jakarta_Sans'] select-text pointer-events-auto">
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 overflow-hidden font-['Plus_Jakarta_Sans'] select-text pointer-events-auto">
           <div className="max-w-5xl w-full h-[90vh] bg-neutral-950 border border-neutral-800 rounded-2xl flex flex-col shadow-[0_0_60px_rgba(220,38,38,0.2)]">
             
             {/* Modal Header */}
@@ -845,102 +758,6 @@ Disable_Light_After_Frame(0.05f);`}
 
           </div>
         </div>
-      )}
-
-      {/* ========================================== */}
-      {/* CINEMATIC STORY CATALOG MODAL             */}
-      {/* ========================================== */}
-      {isCinematicCatalogOpen && (
-        <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 font-['Plus_Jakarta_Sans'] select-none">
-          <div className="max-w-4xl w-full h-[85vh] bg-neutral-950 border border-red-600/50 rounded-2xl flex flex-col shadow-[0_0_60px_rgba(220,38,38,0.3)] overflow-hidden">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-neutral-800 p-6 shrink-0 bg-neutral-900/60">
-              <div className="flex items-center gap-3">
-                <Film className="w-6 h-6 text-red-500 animate-pulse" />
-                <div>
-                  <h3 className="text-xl font-extrabold font-['Chakra_Petch'] tracking-wide text-white">
-                    FOREST ALIVE: CINEMATIC STORY CAMPAIGN
-                  </h3>
-                  <p className="text-xs text-neutral-400 font-mono">
-                    Select a character introduction, outbreak event, or survivor meeting chapter to view
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => { soundEngine.playMechanicalClick(0.5, 900); setIsCinematicCatalogOpen(false); }}
-                className="p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-red-500 text-neutral-400 hover:text-white rounded-lg transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Grid of Cinematic Chapters */}
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { id: 'titan_intro' as CutsceneStoryType, title: 'TITAN: THE VETERAN RETURNS HOME', role: 'Lead Operative', desc: 'Former Army serviceman returning to his family with three children and a fourth on the way.', icon: Shield },
-                { id: 'katrina_intro' as CutsceneStoryType, title: 'KATRINA: THE EXPECTING MOTHER', role: 'Survival Recon', desc: 'Devoted mother of two, days away from giving birth to her third child in the pine valley.', icon: Heart },
-                { id: 'natasha_intro' as CutsceneStoryType, title: 'NATASHA: THE ESTATE HEIRESS', role: 'Secluded Heiress', desc: 'Living in a grand mountain mansion, expecting her first child before the gates are breached.', icon: Sparkles },
-                { id: 'luis_intro' as CutsceneStoryType, title: 'LUIS: THE COMBAT MECHANIC', role: 'Vehicle Engineer', desc: 'Welding jeep armor and reinforcing workshop defenses while receiving emergency static transmissions.', icon: Home },
-                { id: 'bill_intro' as CutsceneStoryType, title: 'BILL: THE WILDERNESS MARKSMAN', role: 'Mountain Hunter', desc: 'Seasoned mountain hunter spotting skinwalkers and unearthly creatures through his scope.', icon: Crosshair },
-                { id: 'the_outbreak' as CutsceneStoryType, title: 'THE OUTBREAK: PANDEMIC ZERO', role: 'Global Event', desc: 'The night the crimson fog descended and military checkpoints were overrun by towering monsters.', icon: ShieldAlert },
-                { id: 'survivor_meeting' as CutsceneStoryType, title: 'THE SURVIVORS: SAFEHOUSE ALLIANCE', role: 'Connected Chapter', desc: 'Titan, Katrina, Natasha, Luis, and Bill unite at the valley safehouse bunker.', icon: Users }
-              ].map((item) => {
-                const IconComp = item.icon;
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      soundEngine.playMechanicalClick(0.6, 1200);
-                      setIsCinematicCatalogOpen(false);
-                      if (onWatchCinematic) onWatchCinematic(item.id);
-                    }}
-                    className="bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-800 hover:border-red-500 rounded-xl p-5 cursor-pointer transition-all flex flex-col justify-between group shadow-md"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-mono text-red-400 bg-red-950/80 border border-red-800/40 px-2.5 py-0.5 rounded-full uppercase">
-                          {item.role}
-                        </span>
-                        <IconComp className="w-5 h-5 text-neutral-500 group-hover:text-red-500 transition-colors" />
-                      </div>
-                      <h4 className="text-base font-bold font-['Chakra_Petch'] text-white group-hover:text-red-400 transition-colors">
-                        {item.title}
-                      </h4>
-                      <p className="text-xs text-neutral-400 mt-2 font-sans line-clamp-2">
-                        {item.desc}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between text-xs font-bold font-['Chakra_Petch'] text-red-500 pt-3 border-t border-neutral-800/80">
-                      <span>WATCH CINEMATIC</span>
-                      <Play className="w-4 h-4 fill-red-500 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-neutral-800 p-5 bg-neutral-900/30 flex items-center justify-between shrink-0">
-              <span className="text-xs text-neutral-500 font-mono">
-                Cinematics include atmospheric sound design, progressive skip, and mobile support.
-              </span>
-              <button
-                onClick={() => { soundEngine.playMechanicalClick(0.5, 900); setIsCinematicCatalogOpen(false); }}
-                className="px-5 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-bold font-['Chakra_Petch'] transition-all"
-              >
-                CLOSE
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* MOD MANAGER MODAL */}
-      {isModManagerOpen && (
-        <ModManagerModal onClose={() => setIsModManagerOpen(false)} />
       )}
 
     </div>

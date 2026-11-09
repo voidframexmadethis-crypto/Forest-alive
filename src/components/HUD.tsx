@@ -1,6 +1,7 @@
 import React from 'react';
 import { PlayerStats, Weapon } from '../types/game';
-import { Shield, Zap, Crosshair, Radio, Flashlight, Target, MoveUp, MoveDown, MoveLeft, MoveRight, RotateCw, Sliders, Heart, Cpu } from 'lucide-react';
+import { MultiplayerRoom } from '../types/multiplayer';
+import { Crosshair, Radio, RotateCw, Heart, Zap, Target, Users, Sliders } from 'lucide-react';
 
 interface HUDProps {
   stats: PlayerStats;
@@ -18,15 +19,23 @@ interface HUDProps {
   onMoveRight: (val: boolean) => void;
   onUnlockPointer: () => void;
   onOpenSandbox?: () => void;
-  onOpenModManager?: () => void;
-  isMultiplayer?: boolean;
-  downedTeammateName?: string | null;
-  onRevive?: () => void;
-  onLeaveMultiplayer?: () => void;
-  onCallGoldenEagle?: () => void;
-  onBoardGoldenEagle?: () => void;
-  onTriggerHydraulics?: () => void;
+  multiplayerRoom?: MultiplayerRoom | null;
+  mySessionId?: string | null;
+  ping?: number;
 }
+
+const WEAPON_META: Record<string, { label: string; icon: string; short: string }> = {
+  fast_guy: { label: 'THE FAST GUY', icon: '⚡', short: 'FAST GUY' },
+  dragon_gun: { label: 'DRAGON GUN', icon: '🐉', short: 'DRAGON' },
+  whip: { label: 'CONTROL WHIP', icon: '🪢', short: 'WHIP' },
+  underground_gun: { label: 'SEISMIC DRILLER', icon: '⛏️', short: 'DRILLER' },
+  m4a1: { label: 'M4A1 CARBINE', icon: '🔫', short: 'M4A1' },
+  shotgun: { label: 'REMINGTON 870', icon: '💥', short: 'SHOTGUN' },
+  sniper: { label: 'BARRETT .50', icon: '🎯', short: 'SNIPER' },
+  minigun: { label: 'M134 VULCAN', icon: '⚡', short: 'MINIGUN' },
+  smoke_grenade: { label: 'SMOKE GRENADE', icon: '💨', short: 'SMOKE' },
+  grenade: { label: 'FRAG GRENADE', icon: '💣', short: 'GRENADE' }
+};
 
 export const HUD: React.FC<HUDProps> = ({
   stats,
@@ -38,99 +47,82 @@ export const HUD: React.FC<HUDProps> = ({
   onReload,
   onShoot,
   onSwitchWeaponSlot,
-  onMoveForward,
-  onMoveBackward,
-  onMoveLeft,
-  onMoveRight,
   onUnlockPointer,
   onOpenSandbox,
-  onOpenModManager,
-  isMultiplayer,
-  downedTeammateName,
-  onRevive,
-  onLeaveMultiplayer,
-  onCallGoldenEagle,
-  onBoardGoldenEagle,
-  onTriggerHydraulics
+  multiplayerRoom,
+  mySessionId,
+  ping
 }) => {
+  const unlockedList = stats.unlockedWeapons ? stats.unlockedWeapons.split(',') : [];
+
+  const handleBarWheel = (e: React.WheelEvent) => {
+    if (!onSwitchWeaponSlot || unlockedList.length === 0) return;
+    const currentIdx = unlockedList.indexOf(weapon.id);
+    if (e.deltaY > 0) {
+      const nextIdx = (currentIdx + 1) % unlockedList.length;
+      onSwitchWeaponSlot(nextIdx);
+    } else if (e.deltaY < 0) {
+      const prevIdx = (currentIdx - 1 + unlockedList.length) % unlockedList.length;
+      onSwitchWeaponSlot(prevIdx);
+    }
+  };
+
   return (
-    <div className="absolute inset-0 pointer-events-none z-20 select-none font-['Plus_Jakarta_Sans']">
+    <div className="fixed inset-0 pointer-events-none z-20 select-none font-['Plus_Jakarta_Sans']">
       
-      {/* WINGED FROST SKINWALKER ICE FROZEN OVERLAY (Visual Frost Frame) */}
+      {/* 1. VISUAL STATUS & ATMOSPHERIC EFFECTS (Non-blocking Horror Atmospherics) */}
       {stats.iceFrozenTimer !== undefined && stats.iceFrozenTimer > 0 && (
-        <div className="absolute inset-0 z-40 bg-cyan-950/30 border-[18px] border-cyan-400/70 backdrop-blur-[2px] pointer-events-none animate-pulse" />
+        <div className="absolute inset-0 z-40 bg-cyan-950/30 border-[16px] border-cyan-400/70 backdrop-blur-[2px] pointer-events-none animate-pulse" />
       )}
 
-      {/* SUBTERRANEAN SNAKE UNDERGROUND PULL OVERLAY */}
       {stats.undergroundPullTimer !== undefined && stats.undergroundPullTimer > 0 && (
-        <div className="absolute inset-0 z-40 bg-amber-950/40 border-[20px] border-amber-900/80 pointer-events-none" />
+        <div className="absolute inset-0 z-40 bg-amber-950/40 border-[18px] border-amber-900/80 pointer-events-none" />
       )}
 
-      {/* SPIDER BLOOD DRAIN OVERLAY */}
       {stats.spiderBloodDrainActive && (
-        <div className="absolute inset-0 z-40 bg-red-950/40 border-[16px] border-red-700/80 pointer-events-none animate-pulse" />
+        <div className="absolute inset-0 z-40 bg-red-950/40 border-[14px] border-red-700/80 pointer-events-none animate-pulse" />
       )}
 
-      {/* 18FT STICK SKINWALKER EAR SCREAM VISUAL FLASH (No Screen Text) */}
       {stats.earScreamScareActive && (
-        <div className="absolute inset-0 z-50 bg-yellow-950/60 border-[24px] border-yellow-500/80 pointer-events-none animate-[pulse_0.05s_infinite]" />
+        <div className="absolute inset-0 z-50 bg-yellow-950/60 border-[20px] border-yellow-500/80 pointer-events-none animate-[pulse_0.05s_infinite]" />
       )}
 
-      {/* NUN BLIND ATTACK OVERLAY (Total Darkness / Blindness) */}
-      {stats.blindTimer !== undefined && stats.blindTimer > 0 && (
-        <div className="absolute inset-0 z-50 bg-black flex items-center justify-center pointer-events-none">
-          <div className="text-center space-y-2">
-            <div className="text-red-600 font-bold tracking-widest font-['Chakra_Petch'] text-2xl animate-pulse">EYES SEEARED BLIND!</div>
-            <div className="text-neutral-500 text-xs font-mono">The Nun's dark curse has blinded your vision...</div>
-          </div>
-        </div>
-      )}
-
-      {/* SKINWALKER HORROR JUMP-SCARE OVERLAY */}
       {stats.skinwalkerJumpScareActive && (
         <div className="absolute inset-0 bg-black/90 z-50 flex items-center justify-center pointer-events-none animate-[pulse_0.1s_infinite]">
-          <div className="relative w-full h-full flex items-center justify-center bg-black">
-            <div className="flex gap-20 items-center justify-center animate-[bounce_0.08s_infinite] select-none">
-              <div className="w-16 h-8 bg-gradient-to-r from-red-600 via-yellow-400 to-yellow-500 rounded-full shadow-[0_0_80px_#ef4444] transform -rotate-12 border-2 border-red-800 flex items-center justify-center">
-                <div className="w-4 h-8 bg-black rounded-full" />
-              </div>
-              <div className="w-16 h-8 bg-gradient-to-l from-red-600 via-yellow-400 to-yellow-500 rounded-full shadow-[0_0_80px_#ef4444] transform rotate-12 border-2 border-red-800 flex items-center justify-center">
-                <div className="w-4 h-8 bg-black rounded-full" />
-              </div>
+          <div className="flex gap-20 items-center justify-center animate-[bounce_0.08s_infinite] select-none">
+            <div className="w-16 h-8 bg-gradient-to-r from-red-600 via-yellow-400 to-yellow-500 rounded-full shadow-[0_0_80px_#ef4444] transform -rotate-12 border-2 border-red-800 flex items-center justify-center">
+              <div className="w-4 h-8 bg-black rounded-full" />
+            </div>
+            <div className="w-16 h-8 bg-gradient-to-l from-red-600 via-yellow-400 to-yellow-500 rounded-full shadow-[0_0_80px_#ef4444] transform rotate-12 border-2 border-red-800 flex items-center justify-center">
+              <div className="w-4 h-8 bg-black rounded-full" />
             </div>
           </div>
         </div>
       )}
 
-      {/* 1. SCREEN BLOOD SPLATTER OVERLAY */}
+      {/* Screen Blood Splatter Overlay */}
       {stats.bloodOnScreen > 0 && (
         <div 
           className="absolute inset-0 bg-red-900/30 transition-opacity duration-300 pointer-events-none"
           style={{ 
             opacity: stats.bloodOnScreen,
-            backgroundImage: `radial-gradient(circle at center, transparent 30%, rgba(180, 0, 0, 0.8) 90%)`
+            backgroundImage: `radial-gradient(circle at center, transparent 35%, rgba(180, 0, 0, 0.75) 90%)`
           }}
-        >
-          {/* Dynamic Blood Drips Edge */}
-          <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-red-950 to-transparent opacity-80" />
-          <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-red-950 to-transparent opacity-80" />
-        </div>
+        />
       )}
 
-      {/* 2. GREEN ACID SLIME SPLATTER OVERLAY */}
+      {/* Green Acid Splatter */}
       {stats.greenAcidOnScreen > 0 && (
         <div 
           className="absolute inset-0 transition-opacity duration-300 pointer-events-none"
           style={{ 
             opacity: stats.greenAcidOnScreen,
-            backgroundImage: `radial-gradient(circle at center, transparent 20%, rgba(0, 200, 50, 0.7) 85%)`
+            backgroundImage: `radial-gradient(circle at center, transparent 25%, rgba(0, 200, 50, 0.6) 85%)`
           }}
-        >
-          <div className="absolute top-1/4 left-1/3 w-48 h-48 bg-emerald-600/50 rounded-full filter blur-xl animate-pulse" />
-        </div>
+        />
       )}
 
-      {/* 3. WHITE MIST OVERLAY */}
+      {/* White Mist Overlay */}
       {stats.whiteMistOnScreen > 0 && (
         <div 
           className="absolute inset-0 bg-white/20 filter blur-md transition-opacity duration-300 pointer-events-none"
@@ -138,63 +130,111 @@ export const HUD: React.FC<HUDProps> = ({
         />
       )}
 
-      {/* 4. HEAVY PANTING / LOW HEALTH VIGNETTE */}
+      {/* Low Health Vignette */}
       {(stats.health < 35 || stats.isBreathingHeavy) && (
-        <div className="absolute inset-0 border-[16px] border-red-600/40 animate-pulse pointer-events-none" />
+        <div className="absolute inset-0 border-[14px] border-red-600/40 animate-pulse pointer-events-none" />
       )}
 
-      {/* 5. DEVELOPMENT CONTROL BOARD BUTTONS */}
-      <div className="absolute top-4 left-4 pointer-events-auto flex flex-col gap-2">
-        {!isLocked && (
-          <div className="bg-neutral-900/90 border border-red-600/50 p-3 rounded-xl flex items-center gap-3 shadow-lg">
-            <Target className="w-5 h-5 text-red-500 animate-pulse" />
-            <div className="text-left text-xs">
-              <div className="font-bold font-['Chakra_Petch'] text-white">TACTICAL SCREEN OVERLAY</div>
-              <div className="text-neutral-400">Use on-screen buttons to Walk, Shoot, and Reload.</div>
-            </div>
+      {/* 2. TOP BAR: MINIMAL & UNOBTRUSIVE */}
+      <div className="absolute top-4 inset-x-4 flex items-start justify-between pointer-events-none z-30">
+        {/* Left: Subtle Pointer Capture Prompt (Only if not locked) */}
+        <div>
+          {!isLocked && (
             <button 
               onClick={onUnlockPointer}
-              className="px-2.5 py-1 bg-red-700 hover:bg-red-800 rounded font-mono text-[10px] text-white font-bold tracking-wider transition-colors"
+              className="pointer-events-auto px-3 py-1.5 bg-black/70 hover:bg-neutral-900 border border-neutral-700/80 rounded-lg text-xs font-mono text-neutral-300 hover:text-white flex items-center gap-2 shadow-lg backdrop-blur-sm transition-all cursor-pointer"
             >
-              CAPTURE LOCK
+              <Target className="w-3.5 h-3.5 text-red-500 animate-pulse" />
+              <span>Click Screen to Aim</span>
             </button>
+          )}
+        </div>
+
+        {/* Center: Quiet Tactical Event Toast (Only appears when active) */}
+        {gameEvent && (
+          <div className="pointer-events-none transition-all animate-fade-in max-w-md mx-auto">
+            <div className="px-4 py-1.5 bg-black/80 backdrop-blur-md border border-red-600/50 rounded-full text-xs font-mono text-red-200 shadow-xl flex items-center gap-2">
+              <Radio className="w-3.5 h-3.5 text-red-500 animate-pulse shrink-0" />
+              <span className="truncate tracking-wide">{gameEvent}</span>
+            </div>
           </div>
         )}
 
-        {onOpenModManager && (
-          <button 
-            onClick={onOpenModManager}
-            className="px-4 py-2.5 bg-neutral-900/90 border border-amber-500/60 hover:border-amber-400 rounded-xl text-[11px] font-extrabold font-['Chakra_Petch'] tracking-widest text-amber-300 hover:text-white flex items-center gap-2 shadow-xl hover:shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all cursor-pointer"
-          >
-            <Cpu className="w-4 h-4 text-amber-400 animate-pulse" />
-            📥 MODS & FILE IMPORTER
-          </button>
-        )}
+        {/* Right: Sleek Survival Timer, Kills & Squad Badge */}
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <div className="bg-black/60 backdrop-blur-md border border-neutral-800/80 px-3.5 py-1.5 rounded-xl font-mono text-xs flex items-center gap-3 text-neutral-300 shadow-lg">
+              <span className="text-red-400 font-bold font-['Chakra_Petch'] text-sm tracking-wider">
+                {Math.floor(stats.survivalSeconds / 60).toString().padStart(2, '0')}:{(stats.survivalSeconds % 60).toString().padStart(2, '0')}
+              </span>
+              <span className="text-neutral-700">|</span>
+              <span className="text-neutral-400">KILLS: <b className="text-white">{stats.kills}</b></span>
+              <span className="text-neutral-700">·</span>
+              <span className="text-neutral-400">HEADSHOTS: <b className="text-emerald-400">{stats.headshots}</b></span>
+            </div>
 
-        {onOpenSandbox && (
-          <button 
-            onClick={onOpenSandbox}
-            className="px-4 py-2.5 bg-red-950/90 border border-red-500/60 hover:border-red-400 rounded-xl text-[11px] font-extrabold font-['Chakra_Petch'] tracking-widest text-red-400 hover:text-white flex items-center gap-2 shadow-xl hover:shadow-[0_0_15px_rgba(220,38,38,0.25)] transition-all cursor-pointer"
-          >
-            <Sliders className="w-4 h-4 text-red-500" />
-            🔧 DEV PHYSICS SANDBOX & SCRIPTS
-          </button>
-        )}
+            {onOpenSandbox && (
+              <button
+                onClick={onOpenSandbox}
+                title="Open Sandbox Tuning"
+                className="p-2 bg-black/60 hover:bg-neutral-900 border border-neutral-800/80 hover:border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-all shadow-lg cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Multiplayer Squad Card */}
+          {multiplayerRoom && (
+            <div className="bg-neutral-950/85 backdrop-blur-md border border-neutral-800/80 rounded-xl p-2.5 shadow-xl min-w-48 text-left">
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-1.5 mb-1.5">
+                <div className="flex items-center gap-1.5 font-bold font-['Chakra_Petch'] text-xs text-white">
+                  <Users className="w-3.5 h-3.5 text-red-500" />
+                  <span>SQUAD [{multiplayerRoom.roomCode}]</span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  {ping || 25}ms
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {Object.values(multiplayerRoom.players).map((p) => {
+                  const isMe = p.sessionId === mySessionId;
+                  const hp = isMe ? stats.health : p.health;
+                  return (
+                    <div key={p.sessionId} className="text-[10px] font-mono">
+                      <div className="flex items-center justify-between text-neutral-300">
+                        <span className="font-semibold flex items-center gap-1">
+                          {p.name}
+                          {p.isHost && <span className="text-[8px] bg-red-600 text-white px-1 py-0.2 rounded font-bold">H</span>}
+                          {isMe && <span className="text-[8px] bg-neutral-800 text-neutral-400 px-1 py-0.2 rounded">YOU</span>}
+                        </span>
+                        <span className="text-neutral-400">{Math.round(hp)} HP</span>
+                      </div>
+                      <div className="w-full bg-neutral-900 h-1 rounded-full overflow-hidden mt-0.5 border border-neutral-800">
+                        <div 
+                          className={`h-full ${hp > 50 ? 'bg-emerald-500' : (hp > 25 ? 'bg-amber-500' : 'bg-red-500')}`} 
+                          style={{ width: `${Math.min(100, Math.max(0, hp))}%` }} 
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 6. SNIPER SCOPE ADS OVERLAY */}
-      {isAiming && weapon.id === 'sniper' && (
+      {/* 3. CENTER CROSSHAIR / AIMING RETICLE */}
+      {isAiming && weapon.id === 'sniper' ? (
         <div className="absolute inset-0 bg-black flex items-center justify-center pointer-events-none">
-          <div className="relative w-[550px] h-[550px] rounded-full border-4 border-neutral-800 bg-transparent flex items-center justify-center overflow-hidden">
+          <div className="relative w-[520px] h-[520px] rounded-full border-4 border-neutral-800 bg-transparent flex items-center justify-center overflow-hidden">
             <div className="absolute inset-x-0 h-0.5 bg-red-600/80" />
             <div className="absolute inset-y-0 w-0.5 bg-red-600/80" />
             <div className="w-4 h-4 rounded-full border border-red-500" />
           </div>
         </div>
-      )}
-
-      {/* 7. DYNAMIC CROSSHAIR */}
-      {(!isAiming || weapon.id !== 'sniper') && (
+      ) : (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none">
           <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
           <div className="absolute -top-3 w-0.5 h-2 bg-white/70" />
@@ -202,304 +242,180 @@ export const HUD: React.FC<HUDProps> = ({
           <div className="absolute -left-3 w-2 h-0.5 bg-white/70" />
           <div className="absolute -right-3 w-2 h-0.5 bg-white/70" />
           
-          {/* HITMARKER OVERLAY */}
           {stats.isHitmarkerActive && (
-            <div className="absolute w-10 h-10 pointer-events-none animate-ping">
-              {/* Top Left Diagonal Line */}
-              <div className="absolute top-1 left-1 w-3.5 h-0.5 bg-red-500 rotate-45 transform origin-top-left" />
-              {/* Top Right Diagonal Line */}
-              <div className="absolute top-1 right-1 w-3.5 h-0.5 bg-red-500 -rotate-45 transform origin-top-right" />
-              {/* Bottom Left Diagonal Line */}
-              <div className="absolute bottom-1 left-1 w-3.5 h-0.5 bg-red-500 -rotate-45 transform origin-bottom-left" />
-              {/* Bottom Right Diagonal Line */}
-              <div className="absolute bottom-1 right-1 w-3.5 h-0.5 bg-red-500 rotate-45 transform origin-bottom-right" />
+            <div className="absolute w-8 h-8 pointer-events-none animate-ping">
+              <div className="absolute top-0.5 left-0.5 w-3 h-0.5 bg-red-500 rotate-45 transform origin-top-left" />
+              <div className="absolute top-0.5 right-0.5 w-3 h-0.5 bg-red-500 -rotate-45 transform origin-top-right" />
+              <div className="absolute bottom-0.5 left-0.5 w-3 h-0.5 bg-red-500 -rotate-45 transform origin-bottom-left" />
+              <div className="absolute bottom-0.5 right-0.5 w-3 h-0.5 bg-red-500 rotate-45 transform origin-bottom-right" />
             </div>
           )}
         </div>
       )}
 
-      {/* 8. TOP TACTICAL EVENT TICKER */}
-      {gameEvent && (
-        <div className="absolute top-6 inset-x-0 flex justify-center">
-          <div className="px-5 py-2 bg-red-950/80 border border-red-600/60 rounded-lg text-xs font-bold text-red-200 tracking-wider font-['Chakra_Petch'] shadow-[0_0_15px_rgba(220,38,38,0.5)] animate-bounce flex items-center gap-2">
-            <Radio className="w-4 h-4 text-red-500 animate-pulse" /> {gameEvent}
-          </div>
-        </div>
-      )}
-
-      {/* 8b. GOLDEN EAGLE EXTRACTION VEHICLE STATUS HUD TICKER */}
-      {stats.goldenEagleStatus && (
-        <div className="absolute top-16 inset-x-0 flex justify-center pointer-events-none z-30">
-          <div className="px-6 py-2.5 bg-amber-950/95 border-2 border-yellow-400/90 rounded-2xl text-xs font-black text-amber-200 tracking-widest font-['Chakra_Petch'] shadow-[0_0_30px_rgba(234,179,8,0.7)] animate-pulse flex items-center gap-3">
-            <span className="text-lg">🦅</span>
-            <span>{stats.goldenEagleStatus}</span>
-          </div>
-        </div>
-      )}
-
-      {/* 8c. GOLDEN EAGLE EXTRACTION VEHICLE TACTICAL CONTROLS */}
-      <div className="absolute top-20 right-4 pointer-events-auto flex flex-col items-end gap-2 z-30">
-        {onCallGoldenEagle && !stats.inGoldenEagle && (
-          <button
-            onClick={onCallGoldenEagle}
-            className="px-4 py-2.5 bg-amber-950/90 border-2 border-yellow-500/80 hover:border-yellow-300 rounded-xl text-[11px] font-black font-['Chakra_Petch'] tracking-widest text-yellow-300 hover:text-white flex items-center gap-2 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:shadow-[0_0_25px_rgba(234,179,8,0.6)] transition-all cursor-pointer active:scale-95"
-          >
-            <span className="text-base">🦅</span>
-            <span>CALL GOLDEN EAGLE [G]</span>
-          </button>
-        )}
-
-        {stats.inGoldenEagle && onTriggerHydraulics && (
-          <button
-            onClick={onTriggerHydraulics}
-            className="px-5 py-3 bg-yellow-400 hover:bg-yellow-300 border-2 border-amber-950 rounded-xl text-xs font-black font-['Chakra_Petch'] tracking-widest text-black flex items-center gap-2 shadow-[0_0_30px_rgba(250,204,21,0.9)] transition-all cursor-pointer animate-bounce active:scale-95"
-          >
-            <Zap className="w-5 h-5 fill-black text-black" />
-            <span>💥 HYDRAULIC BOUNCE [SPACE]</span>
-          </button>
-        )}
-
-        {stats.canBoardGoldenEagle && onBoardGoldenEagle && (
-          <button
-            onClick={onBoardGoldenEagle}
-            className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 border-2 border-white rounded-xl text-xs font-black font-['Chakra_Petch'] tracking-widest text-white flex items-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.8)] transition-all cursor-pointer animate-bounce active:scale-95"
-          >
-            <span className="text-base">🚪</span>
-            <span>BOARD GOLDEN EAGLE [E]</span>
-          </button>
-        )}
-      </div>
-
-      {/* 9. BOTTOM LEFT: VITAL STATS & ON-SCREEN WALKING CONTROLS */}
-      <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 pointer-events-auto">
-        {/* Active Stance Badge */}
+      {/* 4. BOTTOM LEFT: VITAL HEALTH (18 HEARTS) & STAMINA (Distraction-Free) */}
+      <div className="absolute bottom-5 left-5 flex flex-col gap-2.5 pointer-events-auto">
+        {/* Subtle Stance Badge (Crouch / Slide / Prone) only when active */}
         {(stats.isCrouched || stats.isProne || stats.isSliding) && (
-          <div className="bg-red-950/90 border border-red-500/60 px-3 py-1.5 rounded-lg font-['Chakra_Petch'] text-[10px] font-bold text-red-200 tracking-wider animate-pulse flex items-center gap-2 w-max shadow-lg">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
-            {stats.isSliding ? "TACTICAL SLIDE ACTIVE" : (stats.isProne ? "PRONE POSITION" : "CROUCHED STANCE")}
+          <div className="bg-red-950/90 border border-red-500/60 px-2.5 py-1 rounded-md font-['Chakra_Petch'] text-[10px] font-bold text-red-200 tracking-wider animate-pulse flex items-center gap-1.5 w-max shadow-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
+            {stats.isSliding ? "TACTICAL SLIDE" : (stats.isProne ? "PRONE" : "CROUCHED")}
           </div>
         )}
 
-        <div className="flex items-end justify-between gap-2">
-          {/* On-screen Walking Panel */}
-          <div className="bg-neutral-950/95 border border-neutral-800/80 p-3 rounded-xl flex flex-col items-center gap-2 w-max shadow-2xl scale-90 origin-bottom-left">
-            <span className="text-[9px] font-bold tracking-widest text-neutral-400 font-['Chakra_Petch'] mb-1 uppercase">Movement</span>
-            
-            <button
-              onMouseDown={() => onMoveForward(true)}
-              onMouseUp={() => onMoveForward(false)}
-              onMouseLeave={() => onMoveForward(false)}
-              onTouchStart={() => onMoveForward(true)}
-              onTouchEnd={() => onMoveForward(false)}
-              className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-            >
-              <MoveUp className="w-5 h-5 text-white" />
-            </button>
-
-            <div className="flex gap-2">
-              <button
-                onMouseDown={() => onMoveLeft(true)}
-                onMouseUp={() => onMoveLeft(false)}
-                onMouseLeave={() => onMoveLeft(false)}
-                onTouchStart={() => onMoveLeft(true)}
-                onTouchEnd={() => onMoveLeft(false)}
-                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              >
-                <MoveLeft className="w-5 h-5 text-white" />
-              </button>
-
-              <button
-                onMouseDown={() => onMoveBackward(true)}
-                onMouseUp={() => onMoveBackward(false)}
-                onMouseLeave={() => onMoveBackward(false)}
-                onTouchStart={() => onMoveBackward(true)}
-                onTouchEnd={() => onMoveBackward(false)}
-                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              >
-                <MoveDown className="w-5 h-5 text-white" />
-              </button>
-
-              <button
-                onMouseDown={() => onMoveRight(true)}
-                onMouseUp={() => onMoveRight(false)}
-                onMouseLeave={() => onMoveRight(false)}
-                onTouchStart={() => onMoveRight(true)}
-                onTouchEnd={() => onMoveRight(false)}
-                className="p-3 bg-neutral-900 border border-neutral-700 active:bg-red-950 active:border-red-500 rounded-lg flex items-center justify-center shadow transition-all duration-150"
-              >
-                <MoveRight className="w-5 h-5 text-white" />
-              </button>
-            </div>
+        {/* 18 Hearts Health Display Card */}
+        <div className="bg-black/80 backdrop-blur-md border border-neutral-800/90 p-3 rounded-xl w-68 shadow-2xl space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold font-['Chakra_Petch']">
+            <span className="text-red-400 flex items-center gap-1.5 tracking-wider">
+              <Heart className="w-3.5 h-3.5 fill-red-500 text-red-500 animate-pulse" /> 18 HEARTS
+            </span>
+            <span className={stats.health < 30 ? 'text-red-500 font-extrabold animate-pulse' : 'text-white'}>
+              {Math.round(stats.health)}%
+            </span>
           </div>
 
-          {/* Action Buttons (Shoot/Reload) */}
-          <div className="flex flex-col gap-2 items-end scale-90 origin-bottom-right">
-            <button
-              onClick={onReload}
-              className="px-4 py-2.5 bg-amber-950/80 border border-amber-600 hover:border-amber-400 text-amber-400 rounded-xl font-bold text-[10px] tracking-wider font-['Chakra_Petch'] flex items-center gap-2 transition-all active:scale-95 shadow-md"
-            >
-              <RotateCw className="w-4 h-4" /> RELOAD
-            </button>
-
-            <button
-              onClick={onShoot}
-              className="px-6 py-4 bg-red-700 hover:bg-red-600 border border-red-500 rounded-xl font-extrabold text-xs tracking-widest font-['Chakra_Petch'] text-white flex items-center gap-2 transition-all active:scale-95 shadow-lg"
-            >
-              <Crosshair className="w-5 h-5" /> SHOOT
-            </button>
+          <div className="text-[9px] text-amber-400/90 font-mono tracking-tight text-left">
+            ⏳ SLOTH DRAIN (3 TO 7 HOURS TO DEPLETE)
           </div>
-        </div>
 
-        {/* 18 Hearts Health & Stamina combined compact card */}
-        <div className="flex flex-col gap-2 bg-black/80 backdrop-blur-md border border-neutral-800 p-3 rounded-xl shadow-2xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Heart className="w-4 h-4 fill-red-500 text-red-500 animate-pulse" />
-              <span className="text-[10px] font-bold font-['Chakra_Petch'] text-red-400 uppercase tracking-widest">Health</span>
-            </div>
-            <span className="text-[10px] font-mono text-white">{Math.round(stats.health)}%</span>
-          </div>
-          
-          <div className="grid grid-cols-9 gap-1 pb-1">
+          {/* 18 Hearts Grid (2 rows of 9 hearts) */}
+          <div className="grid grid-cols-9 gap-1 pt-0.5 pb-0.5">
             {Array.from({ length: 18 }).map((_, i) => {
               const heartValue = (stats.health / stats.maxHealth) * 18;
               const isFull = heartValue >= i + 0.85;
               const isHalf = heartValue > i + 0.15 && heartValue < i + 0.85;
+
               return (
                 <div key={i} className="flex items-center justify-center">
                   {isFull ? (
-                    <Heart className="w-3 h-3 fill-red-500 text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]" />
+                    <Heart className="w-3.5 h-3.5 fill-red-500 text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.9)]" />
                   ) : isHalf ? (
-                    <Heart className="w-3 h-3 fill-red-800 text-red-500 opacity-80" />
+                    <Heart className="w-3.5 h-3.5 fill-red-800 text-red-500 opacity-80" />
                   ) : (
-                    <Heart className="w-3 h-3 text-neutral-800 fill-neutral-950" />
+                    <Heart className="w-3.5 h-3.5 text-neutral-800 fill-neutral-950" />
                   )}
                 </div>
               );
             })}
           </div>
 
-          <div className="flex items-center gap-3 border-t border-neutral-800 pt-2">
-            <Zap className="w-4 h-4 text-amber-500" />
-            <div className="flex-1 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
+          <div className="w-full bg-neutral-900 h-1.5 rounded-full overflow-hidden border border-neutral-800">
+            <div 
+              className={`h-full transition-all duration-300 ${stats.health < 30 ? 'bg-red-600' : 'bg-emerald-500'}`}
+              style={{ width: `${Math.max(0, (stats.health / stats.maxHealth) * 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Compact Stamina Bar */}
+        <div className="flex items-center gap-2.5 bg-black/70 backdrop-blur-md border border-neutral-800/80 px-3 py-2 rounded-xl w-68 shadow-lg">
+          <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <div className="flex justify-between text-[10px] font-bold font-['Chakra_Petch'] mb-0.5">
+              <span className="text-neutral-400">STAMINA</span>
+              <span className="text-white">{Math.round(stats.stamina)}%</span>
+            </div>
+            <div className="w-full bg-neutral-900 h-1.5 rounded-full overflow-hidden border border-neutral-800">
               <div 
                 className="h-full bg-amber-500 transition-all duration-150"
                 style={{ width: `${(stats.stamina / stats.maxStamina) * 100}%` }}
               />
             </div>
-            <span className="text-[9px] font-mono text-amber-500">{Math.round(stats.stamina)}%</span>
           </div>
         </div>
+      </div>
 
-        {/* Weapons Loadout HUD Bar (Now scrollable if many weapons) */}
-        {stats.unlockedWeapons && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar max-w-full">
-            {stats.unlockedWeapons.split(',').map((wId, i) => {
+      {/* 5. DOCKED BOTTOM WEAPONS HOTBAR (AWAY AT THE BOTTOM / SCROLL WHEEL) */}
+      {unlockedList.length > 0 && (
+        <div 
+          onWheel={handleBarWheel}
+          className="absolute bottom-2.5 inset-x-0 mx-auto w-max max-w-[94vw] flex flex-col items-center gap-1 pointer-events-auto z-30"
+        >
+          {/* Subtle scroll wheel & slot indicator */}
+          <div className="flex items-center gap-2 text-[10px] font-mono tracking-wider text-neutral-400 bg-black/60 px-3 py-0.5 rounded-full border border-neutral-800/60 backdrop-blur-sm">
+            <span>🖱️ SCROLL WHEEL OR 1-0 TO SWITCH</span>
+            <span className="text-neutral-600">·</span>
+            <span className="text-red-400 font-bold uppercase">{weapon.name}</span>
+          </div>
+
+          {/* Clean Horizontal Weapon Slots */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-neutral-950/85 backdrop-blur-md border border-neutral-800/80 rounded-xl shadow-2xl overflow-x-auto max-w-full">
+            {unlockedList.map((wId, i) => {
               const isActive = weapon.id === wId;
-              const nameMap: Record<string, { label: string; icon: string }> = {
-                fast_guy: { label: 'FAST', icon: '⚡' },
-                dragon_gun: { label: 'DRAGON', icon: '🐉' },
-                whip: { label: 'WHIP', icon: '🪢' },
-                underground_gun: { label: 'DRILL', icon: '⛏️' },
-                m4a1: { label: 'M4A1', icon: '🔫' },
-                ak47: { label: 'AK47', icon: '⚔️' },
-                shotgun: { label: '870', icon: '💥' },
-                sniper: { label: '.50', icon: '🎯' },
-                minigun: { label: 'M134', icon: '⚡' },
-                smoke_grenade: { label: 'SMOKE', icon: '💨' },
-                grenade: { label: 'FRAG', icon: '💣' }
-              };
-              const meta = nameMap[wId] || { label: wId.substring(0, 4).toUpperCase(), icon: '🔫' };
+              const meta = WEAPON_META[wId] || { label: wId.toUpperCase(), icon: '🔫', short: wId.toUpperCase() };
+              const slotNumber = i + 1 <= 9 ? i + 1 : (i + 1 === 10 ? 0 : i + 1);
+
               return (
                 <button
                   key={wId}
                   onClick={() => onSwitchWeaponSlot?.(i)}
-                  className={`px-2 py-1 rounded-lg border font-mono text-[9px] font-bold tracking-tight transition-all select-none cursor-pointer flex items-center gap-1 shrink-0 ${
+                  className={`group px-2.5 py-1.5 rounded-lg border font-mono text-[11px] font-bold transition-all select-none cursor-pointer flex items-center gap-2 shrink-0 ${
                     isActive 
-                      ? 'bg-red-950/95 border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.6)]' 
-                      : 'bg-black/80 border-neutral-800 text-neutral-400'
+                      ? 'bg-red-950/90 border-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.5)] scale-105 ring-1 ring-red-400' 
+                      : 'bg-neutral-900/70 border-neutral-800/80 text-neutral-400 hover:text-white hover:border-neutral-600 hover:bg-neutral-800/60'
                   }`}
+                  title={`${meta.label} (Press ${slotNumber} or Scroll Wheel)`}
                 >
-                  <span>{meta.icon}</span>
-                  <span className="font-['Chakra_Petch']">{meta.label}</span>
+                  <span className={`w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center font-['Chakra_Petch'] ${
+                    isActive ? 'bg-red-600 text-white' : 'bg-neutral-800 text-neutral-400 group-hover:text-white'
+                  }`}>
+                    {slotNumber}
+                  </span>
+                  <span className="text-sm">{meta.icon}</span>
+                  <span className="font-['Chakra_Petch'] text-[11px] font-bold tracking-wide whitespace-nowrap">
+                    {meta.short}
+                  </span>
                 </button>
               );
             })}
           </div>
-        )}
-      </div>
-
-      {/* DOWNED TEAMMATE PROXIMITY REVIVE BUTTON */}
-      {downedTeammateName && (
-        <div className="absolute bottom-40 left-1/2 -translate-x-1/2 pointer-events-auto z-40 animate-bounce">
-          <button
-            onClick={onRevive}
-            className="px-6 py-3 bg-red-600 hover:bg-red-500 border-2 border-yellow-300 text-white font-['Chakra_Petch'] font-black text-xs rounded-2xl shadow-[0_0_30px_rgba(239,68,68,0.8)] flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
-          >
-            <Heart className="w-5 h-5 fill-yellow-300 text-yellow-300 animate-pulse" />
-            <span>REVIVE {downedTeammateName.toUpperCase()} [E]</span>
-          </button>
         </div>
       )}
 
-      {/* 11. TOP HUD: TIMER, CO-OP STATUS & AMMO */}
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
-        {/* Left: Survival Timer & Co-op indicator */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="bg-black/70 backdrop-blur-md border border-neutral-800 p-2 rounded-xl text-right font-mono text-[10px]">
-            <div className="text-neutral-500 uppercase tracking-tighter">Time</div>
-            <div className="text-sm font-bold text-red-500 font-['Chakra_Petch'] leading-tight">
-              {Math.floor(stats.survivalSeconds / 60).toString().padStart(2, '0')}:{(stats.survivalSeconds % 60).toString().padStart(2, '0')}
-            </div>
+      {/* 6. BOTTOM RIGHT: SHOOTING BUTTON & RELOAD BUTTON (KEPT WHERE THEY ARE) */}
+      <div className="absolute bottom-5 right-5 flex flex-col items-end gap-2.5 pointer-events-auto z-30">
+        {/* Compact Ammo Display */}
+        <div className="bg-black/70 backdrop-blur-md border border-neutral-800/80 px-4 py-2.5 rounded-xl text-right min-w-[170px] shadow-lg">
+          <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest font-['Chakra_Petch'] truncate">
+            {weapon.name}
+          </div>
+          <div className="flex items-baseline justify-end gap-1 font-['Chakra_Petch']">
+            <span className={`text-3xl font-extrabold ${weapon.currentAmmo === 0 ? 'text-red-600 animate-pulse' : 'text-white'}`}>
+              {weapon.currentAmmo}
+            </span>
+            <span className="text-base text-neutral-500 font-bold">/ {weapon.totalReserve}</span>
           </div>
 
-          {isMultiplayer && (
-            <div className="flex items-center gap-1.5">
-              <div className="bg-cyan-950/80 border border-cyan-500/70 px-2.5 py-1.5 rounded-xl font-mono text-[10px] text-cyan-200 flex items-center gap-1.5 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                <span className="font-['Chakra_Petch'] font-bold">CO-OP MATCH</span>
-              </div>
-              {onLeaveMultiplayer && (
-                <button
-                  onClick={onLeaveMultiplayer}
-                  className="bg-neutral-900/90 hover:bg-red-950/90 border border-neutral-700 hover:border-red-600 px-2 py-1.5 rounded-xl font-mono text-[9px] text-neutral-300 hover:text-red-300 transition-colors"
-                >
-                  LEAVE
-                </button>
-              )}
+          {isReloading && (
+            <div className="text-[10px] font-bold text-amber-400 font-mono animate-pulse mt-0.5">
+              RELOADING...
             </div>
           )}
         </div>
 
-        {/* Ammo Display */}
-        <div className="bg-black/70 backdrop-blur-md border border-red-950 p-2 rounded-xl text-right min-w-[100px] pointer-events-auto">
-          <div className="text-[9px] font-bold text-red-500 uppercase tracking-widest font-['Chakra_Petch'] leading-tight">
-            {weapon.name}
-          </div>
-          <div className="flex items-baseline justify-end gap-0.5 font-['Chakra_Petch'] mt-0.5">
-            <span className={`text-2xl font-extrabold ${weapon.currentAmmo === 0 ? 'text-red-600 animate-pulse' : 'text-white'}`}>
-              {weapon.currentAmmo}
-            </span>
-            <span className="text-xs text-neutral-500 font-bold">/ {weapon.totalReserve}</span>
-          </div>
+        {/* Tactical Command Buttons: Reload & Shoot Kept Where They Are */}
+        <div className="flex items-center gap-2.5">
+          {/* Reload Weapon Button */}
+          <button
+            onClick={onReload}
+            className="px-4 py-3 bg-amber-950/80 hover:bg-amber-900 border border-amber-600/80 hover:border-amber-400 text-amber-400 hover:text-amber-300 rounded-xl font-bold text-xs tracking-wider font-['Chakra_Petch'] flex items-center gap-2 transition-all select-none active:scale-95 shadow-lg cursor-pointer backdrop-blur-sm"
+            title="Reload Weapon (Key R)"
+          >
+            <RotateCw className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
+            <span>RELOAD</span>
+          </button>
+
+          {/* Shoot Weapon Button */}
+          <button
+            onClick={onShoot}
+            className="px-6 py-3.5 bg-red-700 hover:bg-red-600 active:bg-red-800 border border-red-500 rounded-xl font-extrabold text-sm tracking-widest font-['Chakra_Petch'] text-white flex items-center gap-2.5 transition-all active:scale-95 shadow-[0_0_15px_rgba(239,68,68,0.4)] cursor-pointer"
+            title="Shoot Weapon (Left Click / Tap)"
+          >
+            <Crosshair className="w-5 h-5" />
+            <span>SHOOT</span>
+          </button>
         </div>
       </div>
-
-      {/* DEVELOPER DEBUG OVERLAY (Toggled via `~` KeyBackquote) */}
-      {stats.isDebugActive && (
-        <div className="absolute top-20 right-4 left-4 bg-black/95 border border-emerald-500/60 p-3 rounded-xl font-mono text-[9px] text-emerald-400 shadow-2xl z-40">
-          <div className="font-bold text-[10px] text-emerald-300 font-['Chakra_Petch'] border-b border-emerald-800 pb-1 mb-2 flex justify-between items-center uppercase tracking-widest">
-            <span>AI Rig Debug</span>
-            <span className="bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-600">LIVE</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <div><span className="text-neutral-500">Weapon:</span> <b className="text-white">{weapon.name}</b></div>
-            <div><span className="text-neutral-500">Phase:</span> <b className="text-amber-400 uppercase">{stats.directorState?.phase || 'QUIET'}</b></div>
-            <div><span className="text-neutral-500">Tension:</span> <b className="text-red-400">{Math.round(stats.directorState?.tension || 0)}%</b></div>
-            <div><span className="text-neutral-500">Panic:</span> <b className={stats.directorState?.panicActive ? 'text-red-500' : 'text-neutral-500'}>{stats.directorState?.panicActive ? 'YES' : 'NO'}</b></div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

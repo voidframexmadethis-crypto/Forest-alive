@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { Creature, CreatureType, ForestType, GameMode, PlayerStats, Weapon, WeaponType } from '../types/game';
 import { CREATURE_CONFIGS } from './creatures';
 import { WEAPONS_DATABASE } from './weapons';
-import { ModManager } from './modManager';
 import { soundEngine } from './audio';
 import { AssetManager } from './assets/AssetManager';
 import { CreatureVisualController } from './visuals/CreatureVisualController';
@@ -11,24 +10,8 @@ import { CharacterRigController } from './characterRig';
 import { FirstPersonRigController } from './firstPersonRig';
 import { ForestEnvironmentManager } from './forestEnvironment';
 import { EncounterDirector } from './controllers/EncounterDirector';
-import { BaseEnemyAI } from './ai/BaseEnemyAI';
-import { ZombieAI } from './ai/ZombieAI';
-import { SkinwalkerAI } from './ai/SkinwalkerAI';
-import { DoubleTankAI } from './ai/DoubleTankAI';
-import { JockeyAI } from './ai/JockeyAI';
-import { CryingWitchAI } from './ai/CryingWitchAI';
-import { CloudCreatureAI } from './ai/CloudCreatureAI';
-import { FlyingPhantomAI } from './ai/FlyingPhantomAI';
-import { BloodSpiderAI } from './ai/BloodSpiderAI';
-import { SubterraneanSnakeAI } from './ai/SubterraneanSnakeAI';
-import { WingedIceAI } from './ai/WingedIceAI';
-import { StickSkinwalkerAI } from './ai/StickSkinwalkerAI';
-import { NunAI } from './ai/NunAI';
-import { KatrinaCompanionAI } from './ai/KatrinaCompanionAI';
-import { GoldenEagleVehicle } from './GoldenEagleVehicle';
-import { networkClient } from './multiplayer/NetworkClient';
-import { RemotePlayerManager } from './multiplayer/RemotePlayerManager';
-import { MultiplayerRoom, NetworkPlayer } from '../types/multiplayer';
+import { multiplayerClient } from './multiplayerClient';
+import { MultiplayerPlayer } from '../types/multiplayer';
 
 export interface EngineCallbacks {
   onStatsChange: (stats: PlayerStats) => void;
@@ -38,20 +21,11 @@ export interface EngineCallbacks {
   onEnterSafehouseRest: () => void;
 }
 
-export interface EngineOptions {
-  isMultiplayer?: boolean;
-  multiplayerRoom?: MultiplayerRoom | null;
-  localPlayerId?: string | null;
-  selectedCharacter?: HumanCharacterId;
-  currentMission?: number;
-}
-
 export class GameEngine {
   private container: HTMLDivElement;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
-  private currentMission: number = 1;
 
   // Lights & Flashlight
   private ambientLight: THREE.AmbientLight;
@@ -136,17 +110,17 @@ export class GameEngine {
     isSliding: false,
     isHitmarkerActive: false,
     skinwalkerJumpScareActive: false,
-    unlockedWeapons: 'dragon_fire_gun,smoke_gun,m4a1,smoke_grenade,bomb_grenade,twin_grenade_launcher,shotgun,sniper,minigun,grenade'
+    unlockedWeapons: 'm4a1,dragon_gun,whip,underground_gun,fast_guy,smoke_grenade,shotgun,sniper,minigun,grenade'
   };
 
-  public currentWeapon: Weapon = { ...WEAPONS_DATABASE.dragon_fire_gun };
+  public currentWeapon: Weapon = { ...WEAPONS_DATABASE.m4a1 };
   public availableWeapons: Weapon[] = [
-    { ...WEAPONS_DATABASE.dragon_fire_gun },
-    { ...WEAPONS_DATABASE.smoke_gun },
     { ...WEAPONS_DATABASE.m4a1 },
+    { ...WEAPONS_DATABASE.dragon_gun },
+    { ...WEAPONS_DATABASE.whip },
+    { ...WEAPONS_DATABASE.underground_gun },
+    { ...WEAPONS_DATABASE.fast_guy },
     { ...WEAPONS_DATABASE.smoke_grenade },
-    { ...WEAPONS_DATABASE.bomb_grenade },
-    { ...WEAPONS_DATABASE.twin_grenade_launcher },
     { ...WEAPONS_DATABASE.shotgun },
     { ...WEAPONS_DATABASE.sniper },
     { ...WEAPONS_DATABASE.minigun },
@@ -157,7 +131,7 @@ export class GameEngine {
   private thrownGrenades: {
     mesh: THREE.Group;
     velocity: THREE.Vector3;
-    type: 'smoke_grenade' | 'grenade' | 'bomb_grenade' | 'twin_grenade';
+    type: 'smoke_grenade' | 'grenade';
     fuseTimer: number;
     exploded: boolean;
   }[] = [];
@@ -178,7 +152,6 @@ export class GameEngine {
   // World & Entities
   public creatures: Creature[] = [];
   private gunDrops: { type: WeaponType; position: THREE.Vector3; mesh: THREE.Group }[] = [];
-  private environmentMeshes: THREE.Object3D[] = [];
   public tankMesh: THREE.Group | null = null;
   public tankPos = new THREE.Vector3(0, 0, -25);
   public jeepMesh: THREE.Group | null = null;
@@ -210,7 +183,6 @@ export class GameEngine {
   public isJeepMode: boolean = false;
   public isAirplaneMode: boolean = false;
   public isMacSuitMode: boolean = false;
-  public goldenEagleVehicle: GoldenEagleVehicle | null = null;
   private skinwalkerJumpScareCooldown: number = 0;
 
   // Realism Rigs & Forest Environment
@@ -221,6 +193,25 @@ export class GameEngine {
   private playerCharacterRig!: CharacterRigController;
   private storyNpcs: { id: HumanCharacterId; name: string; rig: CharacterRigController }[] = [];
   private nextFootstepTime: number = 0;
+
+  // Real-Time Multiplayer State & Entity Maps
+  public isMultiplayer: boolean = false;
+  private multiplayerSyncTimer: number = 0;
+  private remotePlayers = new Map<string, {
+    sessionId: string;
+    name: string;
+    characterId: HumanCharacterId;
+    parts: any;
+    rig: CharacterRigController;
+    targetPos: THREE.Vector3;
+    targetYaw: number;
+    targetPitch: number;
+    stance: string;
+    isSprinting: boolean;
+    currentWeapon: WeaponType;
+    nameTag: THREE.Sprite;
+    health: number;
+  }>();
 
   // Dynamic FPS Movement/Look Physics config matching standard engine scripts
   public config = {
@@ -240,15 +231,6 @@ export class GameEngine {
     cameraRollWeight: 0.008
   };
 
-  // Cooperative Multiplayer Mode
-  public isMultiplayer: boolean = false;
-  public multiplayerRoom: MultiplayerRoom | null = null;
-  public localPlayerId: string | null = null;
-  public remotePlayerManager: RemotePlayerManager | null = null;
-  private networkSyncTimer: number = 0;
-  public isDowned: boolean = false;
-  public katrinaCompanion: KatrinaCompanionAI | null = null;
-
   public updateConfig(newConfig: Partial<typeof this.config>) {
     this.config = { ...this.config, ...newConfig };
   }
@@ -258,24 +240,23 @@ export class GameEngine {
     mode: GameMode,
     forestType: ForestType,
     callbacks: EngineCallbacks,
-    options?: EngineOptions
+    initialAvatarId: HumanCharacterId = 'titan',
+    isMultiplayerMatch: boolean = false
   ) {
     this.container = container;
     this.mode = mode;
-    this.forestType = options?.currentMission && options.currentMission > 5 ? 'dead_winter' : forestType;
-    this.currentMission = options?.currentMission || 1;
+    this.forestType = forestType;
     this.callbacks = callbacks;
-    this.isMultiplayer = !!options?.isMultiplayer;
-    this.multiplayerRoom = options?.multiplayerRoom || null;
-    this.localPlayerId = options?.localPlayerId || null;
-    if (options?.selectedCharacter) {
-      this.playerAvatarId = options.selectedCharacter;
-    }
+    this.playerAvatarId = initialAvatarId;
+    this.isMultiplayer = isMultiplayerMatch;
 
     if (this.mode === 'the_fast_guy') {
-      this.stats.unlockedWeapons = 'fast_guy,m4a1,smoke_grenade,shotgun,sniper,minigun,grenade';
+      this.stats.unlockedWeapons = 'fast_guy,dragon_gun,whip,underground_gun,m4a1,smoke_grenade,shotgun,sniper,minigun,grenade';
       this.availableWeapons = [
         { ...WEAPONS_DATABASE.fast_guy },
+        { ...WEAPONS_DATABASE.dragon_gun },
+        { ...WEAPONS_DATABASE.whip },
+        { ...WEAPONS_DATABASE.underground_gun },
         { ...WEAPONS_DATABASE.m4a1 },
         { ...WEAPONS_DATABASE.smoke_grenade },
         { ...WEAPONS_DATABASE.shotgun },
@@ -283,17 +264,7 @@ export class GameEngine {
         { ...WEAPONS_DATABASE.minigun },
         { ...WEAPONS_DATABASE.grenade }
       ];
-    }
-
-    // Load active imported gun mods into player loadouts
-    const modWeapons = ModManager.getActiveModWeapons();
-    if (modWeapons.length > 0) {
-      modWeapons.forEach((modGun) => {
-        if (!this.availableWeapons.some(w => w.id === modGun.id)) {
-          this.availableWeapons.push(modGun);
-          this.stats.unlockedWeapons += `,${modGun.id}`;
-        }
-      });
+      this.currentWeapon = { ...WEAPONS_DATABASE.fast_guy };
     }
 
     // Director
@@ -301,12 +272,12 @@ export class GameEngine {
 
     // 1. Scene & Camera setup
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 300);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
     this.camera.position.copy(this.playerPos);
 
     // 2. Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -355,32 +326,13 @@ export class GameEngine {
     this.buildMacSuit();
     this.buildSafehouse();
 
-    // 6b. Golden Eagle Armored Extraction Vehicle
-    this.goldenEagleVehicle = new GoldenEagleVehicle({
-      scene: this.scene,
-      safehousePos: this.safehousePos,
-      onEvent: (msg) => this.callbacks.onGameEvent(msg),
-      onCreatureDamage: (cId, dmg, loc) => {
-        if (this.isMultiplayer) {
-          networkClient.sendCreatureDamage(cId, dmg, loc || 'body');
-        }
-      }
-    });
+    // 7. Human Characters & Rules (Player = avatar; single player spawns story NPCs, multiplayer hooks into live squad)
+    const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId);
+    this.playerCharacterRig = new CharacterRigController(playerParts);
 
-    // 7. Human Characters & Single-Player Rules vs Cooperative Mode
-    if (this.isMultiplayer && this.localPlayerId) {
-      // Cooperative Mode: Selected protagonist avatar rig
-      const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId, this.isMultiplayer);
-      this.playerCharacterRig = new CharacterRigController(playerParts);
-
-      // Remote 3D Player Manager for real human survivors
-      this.remotePlayerManager = new RemotePlayerManager(this.scene, this.camera, this.localPlayerId);
-      this.setupMultiplayerListeners();
+    if (this.isMultiplayer) {
+      this.setupMultiplayerHooks();
     } else {
-      // Single-Player Campaign (Protected): Titan is always protagonist; Katrina, Lewis, Bill spawn as Story NPCs in safehouse
-      this.playerAvatarId = 'titan';
-      const playerParts = CharacterMeshBuilder.createHumanCharacter(this.playerAvatarId, false);
-      this.playerCharacterRig = new CharacterRigController(playerParts);
       this.spawnStoryNpcs();
     }
 
@@ -390,49 +342,6 @@ export class GameEngine {
 
     this.startSurvivalTimer();
     this.animate();
-  }
-
-  private setupMultiplayerListeners() {
-    networkClient.setListeners({
-      onPlayerUpdate: (playerId: string, data: Partial<NetworkPlayer>) => {
-        if (playerId !== this.localPlayerId && this.remotePlayerManager) {
-          const defaultName = this.multiplayerRoom?.players[playerId]?.name;
-          const defaultChar = this.multiplayerRoom?.players[playerId]?.characterId || 'katrina';
-          this.remotePlayerManager.updatePlayer(playerId, data, defaultName, defaultChar);
-        }
-      },
-      onBulletFired: (playerId: string, origin, direction, weaponId) => {
-        if (playerId !== this.localPlayerId && this.remotePlayerManager) {
-          this.remotePlayerManager.handleBulletFired(playerId, origin, direction, weaponId);
-        }
-      },
-      onCreatureDamage: (creatureId: string, damage: number) => {
-        const creature = this.creatures.find(c => c.id === creatureId);
-        if (creature && creature.state !== 'dead') {
-          creature.health -= damage;
-          const cVector = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
-          this.createBloodSpears(cVector);
-          if (creature.health <= 0) {
-            creature.state = 'dead';
-            if (creature.visualController) creature.visualController.playAnimation('death', false);
-            this.scene.remove(creature.mesh);
-            this.callbacks.onGameEvent(`TEAM ELIMINATED ${creature.name}!`);
-          }
-        }
-      },
-      onPlayerRevived: (reviverId: string, targetId: string) => {
-        if (targetId === this.localPlayerId) {
-          this.isDowned = false;
-          this.stats.health = 50;
-          this.callbacks.onStatsChange({ ...this.stats });
-          this.callbacks.onGameEvent('❤️ A TEAMMATE REVIVED YOU! BACK IN COMBAT!');
-          soundEngine.playMechanicalClick(1.0, 900);
-        }
-      },
-      onRoomUpdate: (room: MultiplayerRoom) => {
-        this.multiplayerRoom = room;
-      }
-    });
   }
 
   private spawnStoryNpcs() {
@@ -460,6 +369,218 @@ export class GameEngine {
   public setPlayerAvatar(avatarId: HumanCharacterId) {
     this.playerAvatarId = avatarId;
     this.callbacks.onGameEvent(`Selected Multiplayer Avatar: ${avatarId.toUpperCase()}`);
+  }
+
+  // --- MULTIPLAYER SQUAD SYNCHRONIZATION ---
+  private setupMultiplayerHooks() {
+    multiplayerClient.setCallbacks({
+      onPlayersSync: (players) => {
+        this.handlePlayersSync(players);
+      },
+      onPlayerLeft: (sessionId) => {
+        this.removeRemotePlayer(sessionId);
+      },
+      onRemoteShoot: (data) => {
+        this.handleRemoteShoot(data);
+      },
+      onCreatureDamaged: (data) => {
+        this.handleRemoteCreatureDamage(data);
+      }
+    });
+
+    if (multiplayerClient.currentRoom) {
+      this.handlePlayersSync(multiplayerClient.currentRoom.players);
+    }
+  }
+
+  private createNameTagSprite(name: string, role: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(10, 10, 12, 0.85)';
+      if (ctx.roundRect) {
+        ctx.roundRect(8, 8, 240, 48, 8);
+      } else {
+        ctx.fillRect(8, 8, 240, 48);
+      }
+      ctx.fill();
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name, 128, 32);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(1.4, 0.35, 1);
+    sprite.position.set(0, 2.2, 0);
+    return sprite;
+  }
+
+  private handlePlayersSync(players: Record<string, MultiplayerPlayer>) {
+    const mySessionId = multiplayerClient.sessionId;
+
+    Object.values(players).forEach((p) => {
+      if (p.sessionId === mySessionId) return;
+
+      let remote = this.remotePlayers.get(p.sessionId);
+      if (!remote) {
+        // Spawn remote player model
+        const charId = p.characterId || 'katrina';
+        const parts = CharacterMeshBuilder.createHumanCharacter(charId);
+        parts.group.position.set(p.pos.x, p.pos.y, p.pos.z);
+        this.scene.add(parts.group);
+
+        const rig = new CharacterRigController(parts);
+        rig.setEquippedWeapon(p.currentWeapon || 'm4a1');
+
+        const nameTag = this.createNameTagSprite(p.name, charId);
+        parts.group.add(nameTag);
+
+        remote = {
+          sessionId: p.sessionId,
+          name: p.name,
+          characterId: charId,
+          parts,
+          rig,
+          targetPos: new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z),
+          targetYaw: p.yaw,
+          targetPitch: p.pitch,
+          stance: p.stance,
+          isSprinting: p.isSprinting,
+          currentWeapon: p.currentWeapon,
+          nameTag,
+          health: p.health
+        };
+
+        this.remotePlayers.set(p.sessionId, remote);
+        this.callbacks.onGameEvent(`Squadmate ${p.name} deployed into your sector!`);
+      } else {
+        remote.targetPos.set(p.pos.x, p.pos.y, p.pos.z);
+        remote.targetYaw = p.yaw;
+        remote.targetPitch = p.pitch;
+        remote.stance = p.stance;
+        remote.isSprinting = p.isSprinting;
+        remote.currentWeapon = p.currentWeapon;
+        remote.health = p.health;
+      }
+    });
+
+    // Clean up disconnected players
+    this.remotePlayers.forEach((_, sId) => {
+      if (!players[sId]) {
+        this.removeRemotePlayer(sId);
+      }
+    });
+  }
+
+  private removeRemotePlayer(sessionId: string) {
+    const remote = this.remotePlayers.get(sessionId);
+    if (remote) {
+      this.scene.remove(remote.parts.group);
+      this.remotePlayers.delete(sessionId);
+      this.callbacks.onGameEvent(`Squadmate ${remote.name} disconnected.`);
+    }
+  }
+
+  private handleRemoteShoot(data: {
+    sessionId: string;
+    playerName: string;
+    origin: { x: number; y: number; z: number };
+    direction: { x: number; y: number; z: number };
+    weaponId: WeaponType;
+    hitPoint?: { x: number; y: number; z: number };
+  }) {
+    soundEngine.playGunshot(data.weaponId);
+
+    const from = new THREE.Vector3(data.origin.x, data.origin.y, data.origin.z);
+    let to: THREE.Vector3;
+    if (data.hitPoint) {
+      to = new THREE.Vector3(data.hitPoint.x, data.hitPoint.y, data.hitPoint.z);
+      this.createBloodParticles(to);
+    } else {
+      to = from.clone().add(new THREE.Vector3(data.direction.x, data.direction.y, data.direction.z).multiplyScalar(80));
+    }
+    this.renderRemoteBulletTracer(from, to);
+  }
+
+  private renderRemoteBulletTracer(from: THREE.Vector3, to: THREE.Vector3) {
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([from, to]);
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xffdd44,
+      transparent: true,
+      opacity: 0.9,
+      linewidth: 2
+    });
+    const line = new THREE.Line(lineGeo, lineMat);
+    this.particleGroup.add(line);
+
+    setTimeout(() => {
+      this.particleGroup.remove(line);
+      lineGeo.dispose();
+      lineMat.dispose();
+    }, 80);
+  }
+
+  private handleRemoteCreatureDamage(data: {
+    creatureId: string;
+    damage: number;
+    attackerSessionId: string;
+    attackerName: string;
+    isHeadshot?: boolean;
+  }) {
+    if (data.attackerSessionId === multiplayerClient.sessionId) return;
+
+    const creature = this.creatures.find(c => c.id === data.creatureId);
+    if (creature) {
+      creature.health -= data.damage;
+      const cVector = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
+      this.createBloodParticles(cVector);
+
+      if (data.isHeadshot) {
+        this.callbacks.onGameEvent(`💥 ${data.attackerName} scored a HEADSHOT on ${creature.name}!`);
+      }
+
+      if (creature.health <= 0 && creature.state !== 'dead') {
+        creature.state = 'dead';
+        if (creature.visualController) {
+          creature.visualController.playAnimation('death', false);
+        }
+        this.createBloodSpears(cVector);
+        soundEngine.playCreatureSound('witch_scream');
+        soundEngine.playCreatureSound('zombie');
+        this.callbacks.onGameEvent(`💀 ${data.attackerName} ELIMINATED ${creature.name}!`);
+      }
+    }
+  }
+
+  private updateRemotePlayers(delta: number) {
+    this.remotePlayers.forEach((p) => {
+      const currentPos = p.parts.group.position;
+      currentPos.lerp(p.targetPos, Math.min(1, delta * 12));
+      p.parts.group.rotation.y = THREE.MathUtils.lerp(p.parts.group.rotation.y, p.targetYaw, Math.min(1, delta * 12));
+
+      const isMoving = currentPos.distanceTo(p.targetPos) > 0.05;
+      const moveSpeed = isMoving ? (p.isSprinting ? 9.0 : 5.0) : 0;
+      p.rig.update(delta, moveSpeed, 0, undefined, false, p.isSprinting);
+      p.rig.setEquippedWeapon(p.currentWeapon);
+
+      if (p.stance === 'crouched') {
+        p.parts.group.position.y = p.targetPos.y - 0.4;
+      } else if (p.stance === 'prone' || p.stance === 'sliding') {
+        p.parts.group.position.y = p.targetPos.y - 0.8;
+      } else {
+        p.parts.group.position.y = p.targetPos.y;
+      }
+    });
   }
 
   private setupFog() {
@@ -493,7 +614,6 @@ export class GameEngine {
     const terrain = new THREE.Mesh(geo, mat);
     terrain.receiveShadow = true;
     this.scene.add(terrain);
-    this.environmentMeshes.push(terrain);
 
     // Concrete Pathway (gray corridor spanning the combat arena)
     const pathGeo = new THREE.PlaneGeometry(5, 95);
@@ -507,7 +627,6 @@ export class GameEngine {
     pathway.position.set(0, 0.015, 10); // raised to avoid z-fighting
     pathway.receiveShadow = true;
     this.scene.add(pathway);
-    this.environmentMeshes.push(pathway);
   }
 
   private buildForest() {
@@ -1018,110 +1137,6 @@ export class GameEngine {
 
       gunGroup.add(body, core, drillTip);
       gunGroup.position.set(0.24, -0.22, -0.45);
-    } else if (this.currentWeapon.id === 'bomb_grenade') {
-      // CAP CLICK BOMB GRENADE: Dark metallic grenade with red click cap button and gold ring
-      const bombMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f, roughness: 0.3, metalness: 0.8 });
-      const redCapMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2 });
-      const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.4 });
-
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.095, 14, 14), bombMat);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.04, 10), redCapMat);
-      cap.position.y = 0.1;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.005, 6, 12), goldMat);
-      ring.position.set(0.035, 0.09, 0);
-
-      gunGroup.add(body, cap, ring);
-      gunGroup.position.set(0.2, -0.15, -0.35);
-    } else if (this.currentWeapon.id === 'twin_grenade_launcher') {
-      // TWIN-BARREL AUTOMATIC GRENADE LAUNCHER: Dual heavy barrels, drum ammo magazine & tactical frame
-      const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.4, metalness: 0.85 });
-      const barrelMat = new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.3, metalness: 0.9 });
-      const redStripMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.5 });
-
-      // Main frame body
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.55), frameMat);
-
-      // Left & Right Twin Heavy Barrels
-      const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.52, 12), barrelMat);
-      barrelL.rotation.x = Math.PI / 2;
-      barrelL.position.set(-0.05, 0.02, -0.45);
-
-      const barrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.52, 12), barrelMat);
-      barrelR.rotation.x = Math.PI / 2;
-      barrelR.position.set(0.05, 0.02, -0.45);
-
-      // Dual Drum Ammo Magazine
-      const drumMag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.22), frameMat);
-      drumMag.position.set(0, -0.12, -0.08);
-
-      // Red Warning Strip
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.185, 0.03, 0.2), redStripMat);
-      strip.position.set(0, 0.06, -0.1);
-
-      gunGroup.add(body, barrelL, barrelR, drumMag, strip);
-      gunGroup.position.set(0.22, -0.2, -0.45);
-    } else if (this.currentWeapon.id === 'dragon_fire_gun') {
-      // DRAGON FIRE GUN: Glowing fire-dragon snout nozzle, gold dragon scale body & massive 899-round ammo box
-      const dragonFrameMat = new THREE.MeshStandardMaterial({ color: 0x1f1008, roughness: 0.3, metalness: 0.9 });
-      const goldRuneMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3 });
-      const fireGlowMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
-
-      // Main dragon chassis
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.6), dragonFrameMat);
-
-      // Dragon head snout barrel
-      const snout = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 8), dragonFrameMat);
-      snout.rotation.x = -Math.PI / 2;
-      snout.position.set(0, 0.02, -0.42);
-
-      // Glowing fire core ring
-      const fireRing = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 16), fireGlowMat);
-      fireRing.position.set(0, 0.02, -0.3);
-
-      // Massive 899-round fire ammo box
-      const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.32), goldRuneMat);
-      ammoBox.position.set(0, -0.15, -0.05);
-
-      gunGroup.add(body, snout, fireRing, ammoBox);
-      gunGroup.position.set(0.22, -0.2, -0.45);
-    } else if (this.currentWeapon.id === 'smoke_gun') {
-      // ALLERGIC POISON SMOKE GUN: Glowing toxic green chemical canister & allergic smoke nozzle
-      const toxicBodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2e1d, roughness: 0.4 });
-      const greenGasMat = new THREE.MeshBasicMaterial({ color: 0x00ff44 });
-      const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x4a5d43, metalness: 0.8 });
-
-      // Main weapon body
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.5), toxicBodyMat);
-
-      // Glowing toxic chemical chamber
-      const gasChamber = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.28, 12), greenGasMat);
-      gasChamber.rotation.x = Math.PI / 2;
-      gasChamber.position.set(0, 0.01, -0.05);
-
-      // Smoke emitter nozzle
-      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.25, 12), nozzleMat);
-      nozzle.rotation.x = Math.PI / 2;
-      nozzle.position.set(0, 0.02, -0.4);
-
-      gunGroup.add(body, gasChamber, nozzle);
-      gunGroup.position.set(0.22, -0.2, -0.42);
-    } else if ((this.currentWeapon as any).isCustomMod) {
-      // CUSTOM IMPORTED GUN MOD: Render custom mod gun chassis with custom color glow & energy core
-      const hexStr = (this.currentWeapon as any).colorHex || '#ffaa00';
-      const hexColor = parseInt(hexStr.replace('#', '0x'), 16) || 0xffaa00;
-      const modMat = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.3, metalness: 0.8 });
-      const glowMat = new THREE.MeshBasicMaterial({ color: hexColor });
-
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.55), modMat);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.45, 12), modMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.02, -0.4);
-
-      const core = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 8, 16), glowMat);
-      core.position.set(0, 0.02, -0.15);
-
-      gunGroup.add(body, barrel, core);
-      gunGroup.position.set(0.22, -0.2, -0.45);
     } else {
       // Minigun
       const barrels = new THREE.Group();
@@ -1204,33 +1219,38 @@ export class GameEngine {
   private spawnInitialCreatures() {
     this.creatures = [];
 
-    // Paced slow trickle spawning so the screen stays clear and manageable
+    // Spawn based on game mode
     if (this.mode === 'blood_harvest') {
-      this.spawnCreaturesOfType('zombie', 2);
-      this.spawnCreaturesOfType('skinwalker', 1);
-      this.spawnCreaturesOfType('striker_zombie', 1);
-
-      // Trickle remaining slowly over time
-      setTimeout(() => this.spawnCreaturesOfType('double_tank', 1), 12000);
-      setTimeout(() => this.spawnCreaturesOfType('crying_witch', 1), 24000);
-      setTimeout(() => this.spawnCreaturesOfType('nun', 1), 32000);
-      setTimeout(() => this.spawnCreaturesOfType('blood_spider', 1), 40000);
-      setTimeout(() => this.spawnCreaturesOfType('winged_ice_skinwalker', 1), 48000);
-    } else if (this.mode === 'death_toll') {
-      this.spawnCreaturesOfType('zombie', 3);
-      this.spawnCreaturesOfType('striker_zombie', 1);
-
-      setTimeout(() => this.spawnCreaturesOfType('jockey_9tentacles', 1), 14000);
-      setTimeout(() => this.spawnCreaturesOfType('cloud_creature', 1), 28000);
-      setTimeout(() => this.spawnCreaturesOfType('subterranean_snake', 1), 42000);
-    } else {
-      // CREATURE MODE / THE FAST GUY
+      this.spawnCreaturesOfType('zombie', 6);
+      this.spawnCreaturesOfType('striker_zombie', 4);
       this.spawnCreaturesOfType('skinwalker', 2);
       this.spawnCreaturesOfType('double_tank', 1);
-
-      setTimeout(() => this.spawnCreaturesOfType('winged_ice_skinwalker', 1), 15000);
-      setTimeout(() => this.spawnCreaturesOfType('flying_phantom', 1), 30000);
-      setTimeout(() => this.spawnCreaturesOfType('stick_skinwalker_18ft', 1), 45000);
+      this.spawnCreaturesOfType('crying_witch', 1);
+      this.spawnCreaturesOfType('blood_spider', 2);
+      this.spawnCreaturesOfType('subterranean_snake', 2);
+      this.spawnCreaturesOfType('winged_ice_skinwalker', 1);
+      this.spawnCreaturesOfType('stick_skinwalker_18ft', 1);
+    } else if (this.mode === 'death_toll') {
+      this.spawnCreaturesOfType('zombie', 8);
+      this.spawnCreaturesOfType('striker_zombie', 6);
+      this.spawnCreaturesOfType('jockey_9tentacles', 2);
+      this.spawnCreaturesOfType('double_tank', 1);
+      this.spawnCreaturesOfType('cloud_creature', 1);
+      this.spawnCreaturesOfType('subterranean_snake', 2);
+      this.spawnCreaturesOfType('blood_spider', 2);
+      this.spawnCreaturesOfType('stick_skinwalker_18ft', 1);
+    } else {
+      // CREATURE MODE / THE FAST GUY - ALL ELITE CREATURES
+      this.spawnCreaturesOfType('skinwalker', 3);
+      this.spawnCreaturesOfType('double_tank', 2);
+      this.spawnCreaturesOfType('jockey_9tentacles', 2);
+      this.spawnCreaturesOfType('crying_witch', 2);
+      this.spawnCreaturesOfType('cloud_creature', 2);
+      this.spawnCreaturesOfType('flying_phantom', 3);
+      this.spawnCreaturesOfType('blood_spider', 3);
+      this.spawnCreaturesOfType('subterranean_snake', 3);
+      this.spawnCreaturesOfType('winged_ice_skinwalker', 2);
+      this.spawnCreaturesOfType('stick_skinwalker_18ft', 2);
     }
   }
 
@@ -1273,42 +1293,6 @@ export class GameEngine {
         mesh: instanceMesh,
         visualController
       };
-
-      if (type === 'zombie' || type === 'striker_zombie') {
-        creature.aiController = new ZombieAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'skinwalker') {
-        creature.aiController = new SkinwalkerAI(
-          creature,
-          this.playerPos,
-          () => this.triggerSkinwalkerJumpScare(creature),
-          (msg) => this.callbacks.onGameEvent(msg)
-        );
-      } else if (type === 'double_tank') {
-        creature.aiController = new DoubleTankAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'jockey_9tentacles') {
-        creature.aiController = new JockeyAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'crying_witch') {
-        creature.aiController = new CryingWitchAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'cloud_creature') {
-        creature.aiController = new CloudCreatureAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'flying_phantom') {
-        creature.aiController = new FlyingPhantomAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'blood_spider') {
-        creature.aiController = new BloodSpiderAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'subterranean_snake') {
-        creature.aiController = new SubterraneanSnakeAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'winged_ice_skinwalker') {
-        creature.aiController = new WingedIceAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'stick_skinwalker_18ft') {
-        creature.aiController = new StickSkinwalkerAI(creature, this.playerPos, () => this.performCreatureAttack(creature));
-      } else if (type === 'nun') {
-        creature.aiController = new NunAI(
-          creature,
-          this.playerPos,
-          () => this.performCreatureAttack(creature),
-          (msg) => this.callbacks.onGameEvent(msg)
-        );
-      }
 
       this.creatures.push(creature);
     }
@@ -1532,38 +1516,6 @@ export class GameEngine {
       eyeR.position.set(0.1, 2.45, 0.38);
 
       group.add(dirtMound, snakeGroup, hood, head, eyeL, eyeR);
-    } else if (type === 'nun') {
-      // The Creepy Flying Nun: Dark habit robes, veil, wide open mouth with blood spewing out
-      const robeMat = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.9 });
-      const whiteCollarMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.3 });
-      const bloodMat = new THREE.MeshBasicMaterial({ color: 0xcc0000 });
-      const faceMat = new THREE.MeshStandardMaterial({ color: 0xdddbd5, roughness: 0.7 });
-
-      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.2, 12), robeMat);
-      robe.position.y = 1.1;
-
-      const veil = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 10), robeMat);
-      veil.position.set(0, 2.1, 0);
-
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), whiteCollarMat);
-      collar.position.set(0, 1.7, 0);
-
-      const face = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 10), faceMat);
-      face.position.set(0, 1.95, 0.1);
-
-      const mouthOpen = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.1), new THREE.MeshBasicMaterial({ color: 0x110000 }));
-      mouthOpen.position.set(0, 1.85, 0.3);
-
-      const bloodStream = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.6, 8), bloodMat);
-      bloodStream.position.set(0, 1.5, 0.32);
-      bloodStream.rotation.x = 0.3;
-
-      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
-      eyeL.position.set(-0.09, 2.02, 0.32);
-      const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.04), eyeMat);
-      eyeR.position.set(0.09, 2.02, 0.32);
-
-      group.add(robe, veil, collar, face, mouthOpen, bloodStream, eyeL, eyeR);
     } else if (type === 'winged_ice_skinwalker') {
       // Winged Frost Skinwalker with ice wings & translucent mist aura
       const frostSkinMat = new THREE.MeshStandardMaterial({ color: 0xdbf3ff, roughness: 0.3, metalness: 0.2 });
@@ -1728,11 +1680,9 @@ export class GameEngine {
   }
 
   private onWindowResize = () => {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-    this.camera.aspect = width / height;
+    this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
   // Public UI API controllers
@@ -1828,18 +1778,10 @@ export class GameEngine {
       case 'Digit4': this.switchWeapon(3); break;
       case 'Digit5': this.switchWeapon(4); break;
       case 'Digit6': this.switchWeapon(5); break;
-      case 'KeyG': this.callGoldenEagle(); break;
-      case 'Space':
-        if (this.stats.inGoldenEagle) {
-          this.triggerGoldenEagleHydraulics();
-        } else {
-          // Standard jump
-          if (this.canJump) {
-            this.velocity.y += this.config.jumpForce;
-            this.canJump = false;
-          }
-        }
-        break;
+      case 'Digit7': this.switchWeapon(6); break;
+      case 'Digit8': this.switchWeapon(7); break;
+      case 'Digit9': this.switchWeapon(8); break;
+      case 'Digit0': this.switchWeapon(9); break;
       case 'KeyE': this.checkInteraction(); break;
       case 'Backquote':
         this.stats.isDebugActive = !this.stats.isDebugActive;
@@ -1966,38 +1908,6 @@ export class GameEngine {
   }
 
   private checkInteraction() {
-    // Cooperative Mode: Revive downed teammate if in proximity
-    if (this.isMultiplayer && this.remotePlayerManager) {
-      const downed = this.remotePlayerManager.getDownedTeammateInRange(this.playerPos, 3.2);
-      if (downed) {
-        networkClient.revivePlayer(downed.id);
-        this.callbacks.onGameEvent(`❤️ REVIVED TEAMMATE ${downed.name}!`);
-        soundEngine.playMechanicalClick(1.0, 900);
-        return;
-      }
-    }
-
-    // Distance to Golden Eagle Extraction Vehicle
-    if (this.goldenEagleVehicle) {
-      const distEagle = this.playerPos.distanceTo(this.goldenEagleVehicle.group.position);
-      if (distEagle < 6.0) {
-        if (!this.stats.inGoldenEagle) {
-          const success = this.goldenEagleVehicle.boardVehicle(this.localPlayerId || 'local_player');
-          if (success) {
-            this.stats.inGoldenEagle = true;
-            this.callbacks.onGameEvent('🦅 BOARDED GOLDEN EAGLE EXTRACTION VEHICLE!');
-            this.callbacks.onStatsChange({ ...this.stats });
-            return;
-          }
-        } else {
-          this.stats.inGoldenEagle = false;
-          this.callbacks.onGameEvent('🚪 EXITED GOLDEN EAGLE VEHICLE');
-          this.callbacks.onStatsChange({ ...this.stats });
-          return;
-        }
-      }
-    }
-
     // Distance to Indestructible Jeep
     const distJeep = this.playerPos.distanceTo(this.jeepPos);
     if (distJeep < 6) {
@@ -2090,11 +2000,7 @@ export class GameEngine {
     if (now - this.lastFireTime < this.currentWeapon.fireRate || this.isReloading) return;
 
     if (this.currentWeapon.currentAmmo <= 0) {
-      if (this.currentWeapon.id === 'dragon_fire_gun') {
-        this.triggerReload();
-      } else {
-        soundEngine.playDryFire();
-      }
+      soundEngine.playDryFire();
       return;
     }
 
@@ -2102,16 +2008,9 @@ export class GameEngine {
     this.currentWeapon.currentAmmo--;
     this.callbacks.onWeaponChange({ ...this.currentWeapon });
 
-    // Throwable weapon check (Smoke Grenade, Frag Grenade, Cap Click Bomb Grenade)
-    if (this.currentWeapon.id === 'smoke_grenade' || this.currentWeapon.id === 'grenade' || this.currentWeapon.id === 'bomb_grenade') {
+    // Throwable weapon check (Smoke Grenade or Frag Grenade)
+    if (this.currentWeapon.id === 'smoke_grenade' || this.currentWeapon.id === 'grenade') {
       this.throwGrenade(this.currentWeapon.id);
-      return;
-    }
-
-    // Twin-Barrel Automatic Grenade Launcher check
-    if (this.currentWeapon.id === 'twin_grenade_launcher') {
-      soundEngine.playGunshot('tank_turret');
-      this.launchTwinGrenades();
       return;
     }
 
@@ -2146,25 +2045,11 @@ export class GameEngine {
     raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
 
     const creatureMeshes = this.creatures.filter(c => c.state !== 'dead').map(c => c.mesh);
-    const targetObjects = [...creatureMeshes, ...this.environmentMeshes];
-    const intersects = raycaster.intersectObjects(targetObjects, true);
-
-    // In multiplayer, synchronize fired bullet tracers across clients
-    if (this.isMultiplayer) {
-      const origin = { x: this.camera.position.x, y: this.camera.position.y - 0.2, z: this.camera.position.z };
-      const rayDir = new THREE.Vector3();
-      this.camera.getWorldDirection(rayDir);
-      const hitPt = intersects.length > 0 ? { x: intersects[0].point.x, y: intersects[0].point.y, z: intersects[0].point.z } : undefined;
-      networkClient.sendBulletFired(origin, { x: rayDir.x, y: rayDir.y, z: rayDir.z }, this.currentWeapon.id, hitPt);
-    }
+    const intersects = raycaster.intersectObjects(creatureMeshes, true);
 
     if (intersects.length > 0) {
       const hitObj = intersects[0].object;
       const hitPoint = intersects[0].point;
-      const hitNormal = new THREE.Vector3(0, 1, 0);
-      if (intersects[0].face) {
-        hitNormal.copy(intersects[0].face.normal).transformDirection(hitObj.matrixWorld);
-      }
 
       // Find creature parent
       let root: THREE.Object3D | null = hitObj;
@@ -2181,13 +2066,24 @@ export class GameEngine {
         const damage = isHeadshot ? this.currentWeapon.damage * 2.2 : this.currentWeapon.damage;
 
         const cVector = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
-        this.takeDamage(0); // placeholder if we wanted self-damage logic? no, this is hitting monster.
         creature.health -= damage;
-        this.spawnBloodImpact(hitPoint, hitNormal, creature.mesh);
+        this.createBloodParticles(hitPoint);
         this.createBloodSpears(cVector);
 
+        // Synchronize damage and shooting in multiplayer
         if (this.isMultiplayer) {
-          networkClient.sendCreatureDamage(creature.id, damage, isHeadshot ? 'head' : 'body');
+          const shootDir = new THREE.Vector3();
+          this.camera.getWorldDirection(shootDir);
+          multiplayerClient.sendShoot(
+            this.camera.position,
+            shootDir,
+            this.currentWeapon.id,
+            hitPoint,
+            creature.id,
+            damage,
+            isHeadshot
+          );
+          multiplayerClient.sendCreatureDamage(creature.id, damage, isHeadshot);
         }
 
         // Pain screams on hit/damage
@@ -2200,21 +2096,7 @@ export class GameEngine {
         this.stats.isHitmarkerActive = true;
         soundEngine.playHitmarkerTick();
 
-        if (this.currentWeapon.id === 'smoke_gun') {
-          // ALLERGIC POISON SMOKE GUN: Direct hit kills creatures instantly with toxic poison!
-          creature.health = 0;
-          this.callbacks.onGameEvent(`🧪 ALLERGIC POISON SMOKE OBLITERATED ${creature.name}! MONSTERS FLEE IN TERROR!`);
-
-          // Nearby monsters smell the allergic smoke and flee in terror!
-          this.creatures.forEach(other => {
-            if (other !== creature && other.state !== 'dead') {
-              other.state = 'fleeing';
-            }
-          });
-        } else if (this.currentWeapon.id === 'dragon_fire_gun') {
-          // DRAGON FIRE GUN: Ultra-fast incinerating fire barrage impact
-          this.createBloodSpears(cVector);
-        } else if (this.currentWeapon.id === 'fast_guy') {
+        if (this.currentWeapon.id === 'fast_guy') {
           // Fast Guy 6000-bullet multi-stream extra barrage impact
           this.createBloodSpears(cVector);
         } else if (this.currentWeapon.id === 'whip') {
@@ -2234,7 +2116,25 @@ export class GameEngine {
         }
 
         if (creature.health <= 0) {
-          this.handleCreatureDeath(creature, cVector);
+          creature.state = 'dead';
+          if (creature.visualController) {
+            creature.visualController.playAnimation('death', false);
+          }
+          this.createBloodSpears(cVector);
+          soundEngine.playCreatureSound('witch_scream');
+          soundEngine.playCreatureSound('zombie');
+          
+          this.scene.remove(creature.mesh);
+          this.stats.kills++;
+          this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! CREATURE SCREAMED IN AGONY!`);
+
+          // Drop a weapon at the death coordinate
+          this.spawnGunDrop(cVector);
+
+          // Spawn replacement after delay
+          setTimeout(() => {
+            this.spawnCreaturesOfType(creature.type, 1);
+          }, 6000);
         } else {
           if (creature.visualController) {
             creature.visualController.playAnimation('damage', false);
@@ -2243,11 +2143,17 @@ export class GameEngine {
 
         this.callbacks.onStatsChange({ ...this.stats });
       }
+    } else {
+      if (this.isMultiplayer) {
+        const shootDir = new THREE.Vector3();
+        this.camera.getWorldDirection(shootDir);
+        multiplayerClient.sendShoot(this.camera.position, shootDir, this.currentWeapon.id);
+      }
     }
   }
 
   // --- THROWABLE GRENADES & ALLERGIC SMOKE CLOUD SYSTEM ---
-  private throwGrenade(type: 'smoke_grenade' | 'grenade' | 'bomb_grenade') {
+  private throwGrenade(type: 'smoke_grenade' | 'grenade') {
     const grenadeGroup = new THREE.Group();
 
     if (type === 'smoke_grenade') {
@@ -2257,13 +2163,6 @@ export class GameEngine {
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 12), capMat);
       cap.position.y = 0.2;
       grenadeGroup.add(canister, cap);
-    } else if (type === 'bomb_grenade') {
-      const bombMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.8 });
-      const capMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.3 });
-      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), bombMat);
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), capMat);
-      cap.position.set(0, 0.18, 0);
-      grenadeGroup.add(sphere, cap);
     } else {
       const fragMat = new THREE.MeshStandardMaterial({ color: 0x4a5d33, roughness: 0.7 });
       const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), fragMat);
@@ -2290,8 +2189,6 @@ export class GameEngine {
     this.callbacks.onGameEvent(
       type === 'smoke_grenade'
         ? '💨 ALLERGIC SMOKE GRENADE THROWN!'
-        : type === 'bomb_grenade'
-        ? '💥 CAP CLICK BOMB GRENADE THROWN!'
         : '💣 FRAG GRENADE THROWN!'
     );
   }
@@ -2387,7 +2284,7 @@ export class GameEngine {
     }
   }
 
-  private detonateGrenade(type: 'smoke_grenade' | 'grenade' | 'bomb_grenade' | 'twin_grenade', pos: THREE.Vector3) {
+  private detonateGrenade(type: 'smoke_grenade' | 'grenade', pos: THREE.Vector3) {
     if (type === 'smoke_grenade') {
       const cloudGroup = new THREE.Group();
       cloudGroup.position.copy(pos);
@@ -2445,70 +2342,6 @@ export class GameEngine {
 
       soundEngine.playDryReloadSound();
       this.callbacks.onGameEvent('💨 ALLERGIC SMOKE CLOUD BILLOWING! MONSTERS ARE FLEEING!');
-    } else if (type === 'bomb_grenade') {
-      soundEngine.playGunshot('tank_turret');
-
-      const expLight = new THREE.PointLight(0xff0000, 35, 45);
-      expLight.position.copy(pos);
-      this.scene.add(expLight);
-      setTimeout(() => { this.scene.remove(expLight); }, 300);
-
-      this.creatures.forEach((creature) => {
-        if (creature.state === 'dead') return;
-        const cPos = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
-        const dist = cPos.distanceTo(pos);
-
-        if (dist < 16.0) {
-          creature.health = 0;
-          creature.state = 'dead';
-          this.scene.remove(creature.mesh);
-          this.stats.kills++;
-
-          this.createGushingBloodAndDismemberment(cPos);
-          this.callbacks.onGameEvent(`💥 CAP CLICK BOMB GRENADE OBLITERATED ${creature.name}! HEAD, ARMS, TORSO & LEGS BLOWN OFF WITH BLOOD GUSHING EVERYWHERE!`);
-
-          this.checkAreaClear();
-          setTimeout(() => {
-            this.spawnCreaturesOfType(creature.type, 1);
-          }, 14000);
-        }
-      });
-      this.callbacks.onStatsChange({ ...this.stats });
-    } else if ((type as any) === 'twin_grenade') {
-      soundEngine.playGunshot('tank_turret');
-
-      const expLight = new THREE.PointLight(0xffaa00, 28, 35);
-      expLight.position.copy(pos);
-      this.scene.add(expLight);
-      setTimeout(() => { this.scene.remove(expLight); }, 250);
-
-      this.creatures.forEach((creature) => {
-        if (creature.state === 'dead') return;
-        const cPos = new THREE.Vector3(creature.position.x, creature.position.y, creature.position.z);
-        const dist = cPos.distanceTo(pos);
-
-        if (dist < 14.0) {
-          const damage = Math.round(480 * (1.0 - dist / 14.0));
-          creature.health -= damage;
-
-          if (creature.health <= 0) {
-            creature.state = 'dead';
-            this.scene.remove(creature.mesh);
-            this.stats.kills++;
-
-            this.createGushingBloodAndDismemberment(cPos);
-            this.callbacks.onGameEvent(`🚀 TWIN GRENADE LAUNCHER SHREDDED ${creature.name}! WHOLE CREATURE BLOWN INTO PIECES WITH BLOOD GUSHING ON GROUND!`);
-
-            this.checkAreaClear();
-            setTimeout(() => {
-              this.spawnCreaturesOfType(creature.type, 1);
-            }, 14000);
-          } else {
-            this.createBloodSpears(cPos);
-          }
-        }
-      });
-      this.callbacks.onStatsChange({ ...this.stats });
     } else {
       soundEngine.playGunshot('tank_turret');
 
@@ -2525,7 +2358,7 @@ export class GameEngine {
         if (dist < 12.0) {
           const damage = Math.round(250 * (1.0 - dist / 12.0));
           creature.health -= damage;
-          this.spawnBloodImpact(cPos, new THREE.Vector3(0, 1, 0));
+          this.createBloodParticles(cPos);
 
           if (creature.health <= 0) {
             creature.state = 'dead';
@@ -2533,11 +2366,6 @@ export class GameEngine {
             this.scene.remove(creature.mesh);
             this.stats.kills++;
             this.callbacks.onGameEvent(`💣 FRAG BLAST DECIMATED ${creature.name}!`);
-
-            this.checkAreaClear();
-            setTimeout(() => {
-              this.spawnCreaturesOfType(creature.type, 1);
-            }, 14000);
           }
         }
       });
@@ -2546,237 +2374,25 @@ export class GameEngine {
     }
   }
 
-  private launchTwinGrenades() {
-    const camPos = this.camera.position.clone();
-    const forward = new THREE.Vector3();
-    this.camera.getWorldDirection(forward);
-    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-    [-0.12, 0.12].forEach((offset) => {
-      const grenadeGroup = new THREE.Group();
-      const grenadeMat = new THREE.MeshStandardMaterial({ color: 0xcc2200, roughness: 0.3, metalness: 0.8 });
-      const capMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 10), grenadeMat);
-      body.rotation.x = Math.PI / 2;
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), capMat);
-      cap.position.z = -0.1;
-      grenadeGroup.add(body, cap);
-
-      const spawnPos = camPos.clone().add(forward.clone().multiplyScalar(0.6)).add(right.clone().multiplyScalar(offset));
-      grenadeGroup.position.copy(spawnPos);
-      this.scene.add(grenadeGroup);
-
-      const initialVelocity = forward.clone().multiplyScalar(38).add(new THREE.Vector3(0, 2, 0));
-
-      this.thrownGrenades.push({
-        mesh: grenadeGroup,
-        velocity: initialVelocity,
-        type: 'twin_grenade' as any,
-        fuseTimer: 0.8,
-        exploded: false
-      });
-    });
-
-    this.callbacks.onGameEvent('💥 TWIN-BARREL AUTOMATIC LAUNCHER FIRED DUAL GRENADES!');
-  }
-
-  private checkAreaClear() {
-    const activeEnemies = this.creatures.filter(c => c.state !== 'dead').length;
-    if (activeEnemies === 0) {
-      soundEngine.playVictoryFanfare();
-      this.callbacks.onGameEvent(`✨ CLEAR SCREEN! ALL SKINWALKERS & CREATURES NEUTRALIZED! TOTAL KILLS: ${this.stats.kills}`);
-    }
-  }
-
-  private handleCreatureDeath(creature: Creature, cVector: THREE.Vector3) {
-    if (creature.type === 'nun' && creature.aiController instanceof NunAI) {
-      const isDead = creature.aiController.handleLifeLoss();
-      if (!isDead) {
-        creature.health = creature.maxHealth;
-        return; // Survives with next life phase!
-      }
-    }
-
-    creature.state = 'dead';
-    if (creature.visualController) {
-      creature.visualController.playAnimation('death', false);
-    }
-    this.createBloodSpears(cVector);
-    soundEngine.playCreatureSound('witch_scream');
-    soundEngine.playCreatureSound('zombie');
-    
-    if (creature.mesh) {
-      this.scene.remove(creature.mesh);
-    }
-    this.stats.kills++;
-    this.callbacks.onGameEvent(`ELIMINATED ${creature.name}! TOTAL KILLS: ${this.stats.kills}`);
-
-    // Drop a weapon at the death coordinate
-    this.spawnGunDrop(cVector);
-
-    // Check if screen is clear!
-    this.checkAreaClear();
-
-    // Spawn slow replacement after controlled delay so screen stays clear
-    setTimeout(() => {
-      this.spawnCreaturesOfType(creature.type, 1);
-    }, 14000);
-  }
-
-  private createGushingBloodAndDismemberment(pos: THREE.Vector3) {
-    this.createBloodSpears(pos);
-
-    const gibGroup = new THREE.Group();
-    const fleshMat = new THREE.MeshStandardMaterial({ color: 0x881111, roughness: 0.6 });
-
-    const headGib = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), fleshMat);
-    headGib.position.set(pos.x, pos.y + 1.6, pos.z);
-
-    const torsoGib = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.25), fleshMat);
-    torsoGib.position.set(pos.x, pos.y + 1.1, pos.z);
-
-    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.4, 8), fleshMat);
-    armL.position.set(pos.x - 0.3, pos.y + 1.2, pos.z);
-
-    const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.4, 8), fleshMat);
-    armR.position.set(pos.x + 0.3, pos.y + 1.2, pos.z);
-
-    const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.5, 8), fleshMat);
-    legL.position.set(pos.x - 0.2, pos.y + 0.5, pos.z);
-
-    const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.5, 8), fleshMat);
-    legR.position.set(pos.x + 0.2, pos.y + 0.5, pos.z);
-
-    const parts = [headGib, torsoGib, armL, armR, legL, legR];
-    const velocities: THREE.Vector3[] = [];
-
-    parts.forEach((part) => {
-      gibGroup.add(part);
-      const vel = new THREE.Vector3(
-        (Math.random() - 0.5) * 14,
-        Math.random() * 10 + 6,
-        (Math.random() - 0.5) * 14
-      );
-      velocities.push(vel);
-    });
-
-    this.particleGroup.add(gibGroup);
-
-    const bloodPoolMat = new THREE.MeshBasicMaterial({
-      color: 0x660000,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false
-    });
-    const bloodPool = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), bloodPoolMat);
-    bloodPool.rotation.x = -Math.PI / 2;
-    bloodPool.position.set(pos.x, 0.02, pos.z);
-    this.particleGroup.add(bloodPool);
-
-    let elapsed = 0;
-    const animateGibs = () => {
-      elapsed += 0.016;
-      if (elapsed < 2.5) {
-        if (bloodPool.scale.x < 8.0) {
-          const s = bloodPool.scale.x + 0.15;
-          bloodPool.scale.set(s, s, s);
-        }
-
-        parts.forEach((p, idx) => {
-          const v = velocities[idx];
-          if (p.position.y > 0.05) {
-            p.position.addScaledVector(v, 0.016);
-            v.y -= 25 * 0.016;
-            p.rotation.x += 0.2;
-            p.rotation.z += 0.15;
-          } else {
-            p.position.y = 0.05;
-          }
-        });
-
-        requestAnimationFrame(animateGibs);
-      } else {
-        setTimeout(() => {
-          this.particleGroup.remove(gibGroup);
-          this.particleGroup.remove(bloodPool);
-        }, 8000);
-      }
-    };
-    requestAnimationFrame(animateGibs);
-
-    soundEngine.playCreatureSound('witch_scream');
-    soundEngine.playCreatureSound('zombie');
-  }
-
-  private spawnBloodImpact(hitPoint: THREE.Vector3, hitNormal: THREE.Vector3, hitTransform?: THREE.Object3D) {
-    // 1. Blood Spurt Particle System (mirroring Unity BloodImpactSpawner.cs)
+  private createBloodParticles(pos: THREE.Vector3) {
     const pGeo = new THREE.BufferGeometry();
-    const pCount = 28;
+    const pCount = 18;
     const positions = new Float32Array(pCount * 3);
-    const velocities: THREE.Vector3[] = [];
 
-    for (let i = 0; i < pCount; i++) {
-      positions[i * 3] = hitPoint.x;
-      positions[i * 3 + 1] = hitPoint.y;
-      positions[i * 3 + 2] = hitPoint.z;
-      const vel = hitNormal.clone().normalize().multiplyScalar(2.0 + Math.random() * 4.0);
-      vel.x += (Math.random() - 0.5) * 2.5;
-      vel.y += (Math.random() - 0.2) * 2.5 + 1.0;
-      vel.z += (Math.random() - 0.5) * 2.5;
-      velocities.push(vel);
+    for (let i = 0; i < pCount * 3; i += 3) {
+      positions[i] = pos.x + (Math.random() - 0.5) * 0.4;
+      positions[i + 1] = pos.y + (Math.random() - 0.5) * 0.4;
+      positions[i + 2] = pos.z + (Math.random() - 0.5) * 0.4;
     }
 
     pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const pMat = new THREE.PointsMaterial({ color: 0x990000, size: 0.15, transparent: true, opacity: 0.9 });
+    const pMat = new THREE.PointsMaterial({ color: 0x880000, size: 0.12 });
     const pSystem = new THREE.Points(pGeo, pMat);
-    this.scene.add(pSystem);
+    this.particleGroup.add(pSystem);
 
-    const startTime = performance.now();
-    const animSpurt = () => {
-      const elapsed = (performance.now() - startTime) * 0.001;
-      if (elapsed > 3.0) {
-        this.scene.remove(pSystem);
-        pGeo.dispose();
-        pMat.dispose();
-        return;
-      }
-      const posAttr = pGeo.attributes.position as THREE.BufferAttribute;
-      const arr = posAttr.array as Float32Array;
-      for (let i = 0; i < pCount; i++) {
-        arr[i * 3] += velocities[i].x * 0.016;
-        arr[i * 3 + 1] += velocities[i].y * 0.016 - 9.8 * 0.016 * elapsed * 0.2;
-        arr[i * 3 + 2] += velocities[i].z * 0.016;
-      }
-      posAttr.needsUpdate = true;
-      requestAnimationFrame(animSpurt);
-    };
-    requestAnimationFrame(animSpurt);
-
-    // 2. Blood Decal Splat on Wall/Floor Surface (mirroring Unity bloodDecalPrefabs)
-    const decalGeo = new THREE.PlaneGeometry(1, 1);
-    const decalMat = new THREE.MeshBasicMaterial({
-      color: 0x550000,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false
-    });
-    const decalMesh = new THREE.Mesh(decalGeo, decalMat);
-
-    const spawnPos = hitPoint.clone().addScaledVector(hitNormal, 0.02);
-    decalMesh.position.copy(spawnPos);
-    const lookAtTarget = spawnPos.clone().add(hitNormal);
-    decalMesh.lookAt(lookAtTarget);
-    decalMesh.rotateZ(Math.random() * Math.PI * 2);
-
-    const randomScale = 0.5 + Math.random() * 1.0;
-    decalMesh.scale.set(randomScale, randomScale, randomScale);
-
-    if (hitTransform) {
-      hitTransform.add(decalMesh);
-    } else {
-      this.scene.add(decalMesh);
-    }
+    setTimeout(() => {
+      this.particleGroup.remove(pSystem);
+    }, 400);
   }
 
   private createBloodSpears(pos: THREE.Vector3) {
@@ -2837,6 +2453,28 @@ export class GameEngine {
 
     // Process player movement, AI, and timers (runs regardless of lock status to support mobile touch buttons and sandbox iframe environments)
     const isGameplayActive = true; 
+
+    // Real-Time Multiplayer Squad Sync & Remote Interpolation
+    if (this.isMultiplayer) {
+      this.updateRemotePlayers(delta);
+
+      this.multiplayerSyncTimer += delta;
+      if (this.multiplayerSyncTimer >= 0.05) { // 20 Hz packet tick
+        this.multiplayerSyncTimer = 0;
+        const stance = this.isProne
+          ? 'prone'
+          : (this.isCrouched ? 'crouched' : (this.isSliding ? 'sliding' : (this.isDolphinDiving ? 'diving' : 'standing')));
+        multiplayerClient.sendPlayerUpdate(
+          { x: this.playerPos.x, y: this.playerPos.y, z: this.playerPos.z },
+          this.yaw,
+          this.pitch,
+          stance,
+          this.stats.isSprinting,
+          this.currentWeapon.id,
+          this.stats.health
+        );
+      }
+    }
 
     if (isGameplayActive) {
       // 1. Sliding & Diving timers
@@ -2905,64 +2543,6 @@ export class GameEngine {
       this.creatures.forEach(c => {
         if(c.visualController) c.visualController.update(delta);
       });
-
-      if (this.katrinaCompanion) {
-        this.katrinaCompanion.update(delta, this.playerPos, this.creatures);
-      }
-
-      // Golden Eagle Vehicle update tick
-      if (this.goldenEagleVehicle) {
-        this.goldenEagleVehicle.update(delta, now / 1000, this.creatures, this.playerPos);
-        this.stats.goldenEagleStatus = this.goldenEagleVehicle.getHUDStatusText();
-
-        const distEagle = this.playerPos.distanceTo(this.goldenEagleVehicle.group.position);
-        this.stats.canBoardGoldenEagle = distEagle < 6.0 && this.goldenEagleVehicle.currentState === 'waiting_for_boarding';
-
-        if (this.stats.inGoldenEagle) {
-          // Snap player position & camera inside Golden Eagle
-          this.playerPos.copy(this.goldenEagleVehicle.group.position).add(new THREE.Vector3(0, 1.8, 0));
-          this.camera.position.copy(this.playerPos);
-
-          if (this.goldenEagleVehicle.currentState === 'idle' && this.goldenEagleVehicle.passengersInside.length === 0) {
-            this.stats.inGoldenEagle = false;
-            this.callbacks.onGameEvent('✅ SAFELY ARRIVED AT SAFEHOUSE!');
-          }
-        }
-      }
-
-      // Cooperative Multiplayer: Tick remote 3D player rigs and broadcast 20Hz position update
-      if (this.isMultiplayer) {
-        if (this.remotePlayerManager) {
-          this.remotePlayerManager.tick(delta);
-        }
-
-        this.networkSyncTimer += delta;
-        if (this.networkSyncTimer >= 0.05) { // 20 times per second
-          this.networkSyncTimer = 0;
-          const isMoving = this.moveForward || this.moveBackward || this.moveLeft || this.moveRight;
-          let stance: 'standing' | 'crouching' | 'prone' | 'sliding' | 'sprinting' = 'standing';
-          if (this.isDowned) stance = 'prone';
-          else if (this.isSliding) stance = 'sliding';
-          else if (this.isProne) stance = 'prone';
-          else if (this.isCrouched) stance = 'crouching';
-          else if (this.stats.isSprinting && isMoving) stance = 'sprinting';
-
-          networkClient.sendPlayerUpdate({
-            position: { x: this.playerPos.x, y: this.playerPos.y, z: this.playerPos.z },
-            rotation: { yaw: this.yaw, pitch: this.pitch, roll: this.cameraRoll },
-            stance,
-            isAiming: this.isAiming,
-            isShooting: false,
-            isReloading: this.isReloading,
-            weaponId: this.currentWeapon.id,
-            health: this.stats.health,
-            maxHealth: this.stats.maxHealth,
-            isDowned: this.isDowned,
-            isDead: false,
-            kills: this.stats.kills
-          });
-        }
-      }
     }
 
     // 3. Flashlight tracking camera
@@ -3053,10 +2633,7 @@ export class GameEngine {
     let actualSpeed = this.config.baseSpeed;
     this.targetEyeHeight = 1.7;
 
-    if (this.isDowned) {
-      actualSpeed = 1.2; // Slow crawl while awaiting squad revive
-      this.targetEyeHeight = 0.4;
-    } else if (this.isDolphinDiving) {
+    if (this.isDolphinDiving) {
       actualSpeed = this.config.baseSpeed * 1.5;
       this.targetEyeHeight = 0.5; // low dive
     } else if (this.isSliding) {
@@ -3092,11 +2669,6 @@ export class GameEngine {
       this.stats.undergroundPullTimer -= delta;
       if (this.stats.undergroundPullTimer <= 0) this.stats.undergroundPullTimer = 0;
       this.targetEyeHeight = 0.25; // Pulled underground into soil pit!
-    }
-
-    if (this.stats.blindTimer && this.stats.blindTimer > 0) {
-      this.stats.blindTimer -= delta;
-      if (this.stats.blindTimer <= 0) this.stats.blindTimer = 0;
     }
 
     // Decaying velocity damping
@@ -3220,16 +2792,6 @@ export class GameEngine {
     // Apply Camera Shake offset
     this.camera.position.add(this.camShake);
 
-    // Screen Blood FX (mirroring Unity ScreenBloodFX.cs)
-    const isLowHealth = this.stats.health < 30;
-    if (isLowHealth) {
-      const pulse = (Math.sin(performance.now() * 0.001 * 3.0) + 1.0) * 0.5; // pulseSpeed = 3.0
-      const pulsedAlpha = THREE.MathUtils.lerp(0.2, 0.7, pulse);
-      this.stats.bloodOnScreen = Math.max(this.stats.bloodOnScreen, pulsedAlpha);
-    } else if (this.stats.bloodOnScreen > 0) {
-      this.stats.bloodOnScreen = Math.max(0, this.stats.bloodOnScreen - delta * 0.75); // fadeSpeed / 2
-    }
-
     this.callbacks.onStatsChange({ ...this.stats });
   }
 
@@ -3241,66 +2803,168 @@ export class GameEngine {
 
     this.creatures.forEach((creature) => {
       if (creature.state === 'dead') return;
-
-      // Use modern AI controller (mirroring Unity BaseEnemyAI structure)
-      if (creature.aiController) {
-        // Special logic for crying witch flashlight detection (still easier to check here due to camera)
-        if (creature.type === 'crying_witch' && !creature.isEnraged) {
-          if (this.stats.isFlashlightOn) {
-            const cPos = creature.mesh.position;
-            const distToPlayer = cPos.distanceTo(this.playerPos);
-            if (distToPlayer < 20) {
-              const playerDir = new THREE.Vector3();
-              this.camera.getWorldDirection(playerDir);
-              const toWitch = new THREE.Vector3().subVectors(cPos, this.playerPos).normalize();
-              if (playerDir.dot(toWitch) > 0.75) {
-                creature.isEnraged = true;
-                creature.state = 'chasing';
-                soundEngine.playCreatureSound('witch_scream');
-                this.callbacks.onGameEvent('THE CRYING WITCH HAS BEEN ENRAGED BY YOUR FLASHLIGHT!');
-              }
-            }
+      
+      // Whip Stunned / Incapacitated State
+      if (creature.stunTimer && creature.stunTimer > 0) {
+        creature.stunTimer -= delta;
+        if (creature.stunTimer <= 0) {
+          creature.stunTimer = 0;
+          if (creature.mesh && !creature.isTurtle) {
+            creature.mesh.position.y = 0; // return to standing
           }
         }
+        return; // Stunned creatures remain incapacitated on ground!
+      }
 
-        creature.aiController.update(delta, now, this.stats);
-        return;
+      // Peaceful Turtle State Handling
+      if (creature.isTurtle) {
+        creature.idleTimer = (creature.idleTimer || 0) + delta * 1.5;
+        creature.mesh.rotation.y += Math.sin(creature.idleTimer) * 0.015;
+        const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), creature.mesh.rotation.y);
+        creature.mesh.position.addScaledVector(forward, creature.speed * delta);
+        creature.position.x = creature.mesh.position.x;
+        creature.position.z = creature.mesh.position.z;
+        return; // Turtles do not attack or chase!
+      }
+
+      // Fleeing State Handling (Smelled/saw allergic smoke cloud)
+      if (creature.state === 'fleeing') {
+        if (creature.visualController) {
+          creature.visualController.playAnimation('movement', true);
+        }
+        return; // Fleeing creatures run away and do not attack player!
+      }
+
+      // Update procedural idle movement or animation state
+      creature.idleTimer = (creature.idleTimer || 0) + delta * 2.0;
+      if (creature.state === 'idle') {
+        creature.mesh.position.y += Math.sin(creature.idleTimer) * 0.005; // breathing
+        creature.mesh.rotation.y += Math.sin(creature.idleTimer * 0.5) * 0.002; // subtle idle sway
+        if (creature.visualController) {
+          creature.visualController.playAnimation('idle', true);
+        }
+      } else if (creature.state === 'chasing') {
+        if (creature.visualController) {
+          creature.visualController.playAnimation('movement', true);
+        }
+      }
+
+      const cPos = creature.mesh.position;
+      const distToPlayer = cPos.distanceTo(this.playerPos);
+
+      // --- 1. INVESTIGATE SOUND STATE ---
+      if (creature.state === 'investigate' && creature.investigateTargetPos) {
+        const invTarget = new THREE.Vector3(creature.investigateTargetPos.x, cPos.y, creature.investigateTargetPos.z);
+        const distToSound = cPos.distanceTo(invTarget);
+
+        if (distToSound > 2.0) {
+          const dir = new THREE.Vector3().subVectors(invTarget, cPos).normalize();
+          cPos.addScaledVector(dir, creature.speed * 0.5 * delta);
+          creature.mesh.lookAt(invTarget.x, cPos.y, invTarget.z);
+          if (creature.visualController) creature.visualController.playAnimation('movement', true);
+        } else {
+          // Reached sound origin -> transition to search nearby area
+          creature.state = 'search';
+          creature.searchTimer = 5.0;
+        }
+      }
+
+      // --- 2. SEARCH AREA STATE ---
+      if (creature.state === 'search') {
+        creature.searchTimer = (creature.searchTimer || 0) - delta;
+        creature.mesh.rotation.y += Math.sin(now * 0.003) * 0.02; // looking around
+        if (creature.visualController) creature.visualController.playAnimation('idle', true);
+
+        if ((creature.searchTimer || 0) <= 0) {
+          creature.state = 'idle';
+          creature.investigateTargetPos = null;
+        }
+      }
+
+      // --- 3. LINE OF SIGHT & PLAYER DETECTION ---
+      if (distToPlayer < 22.0 && creature.state !== 'chasing' && creature.state !== 'chase' && (creature.state as string) !== 'fleeing') {
+        const playerDir = new THREE.Vector3().subVectors(this.playerPos, cPos).normalize();
+        const creatureForward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), creature.mesh.rotation.y);
+
+        // Detect if player is close or in front view cone or making sprinting noise
+        const isSprintingNoise = this.stats.isSprinting && distToPlayer < 18.0;
+        const isInViewCone = creatureForward.dot(playerDir) > 0.3 && distToPlayer < 16.0;
+
+        if (distToPlayer < 6.0 || isInViewCone || isSprintingNoise) {
+          creature.state = 'chasing';
+          creature.lastKnownPlayerPos = this.playerPos.clone();
+        }
+      }
+
+      // --- 4. LOSE PLAYER & BREAK LINE OF SIGHT ---
+      if ((creature.state === 'chasing' || creature.state === 'chase') && distToPlayer > 28.0) {
+        creature.state = 'search';
+        creature.searchTimer = 6.0;
+        creature.lastKnownPlayerPos = this.playerPos.clone();
+      }
+
+      // --- SKINWALKER PSYCHOLOGICAL HORROR JUMP-SCARE ---
+      if (creature.type === 'skinwalker' && distToPlayer < 4.5 && !this.stats.skinwalkerJumpScareActive && this.skinwalkerJumpScareCooldown <= 0) {
+        this.stats.skinwalkerJumpScareActive = true;
+        this.skinwalkerJumpScareCooldown = 15.0; // 15s cooldown
+
+        soundEngine.playCreatureSound('witch_scream');
+        soundEngine.playCreatureSound('skinwalker');
+        setTimeout(() => soundEngine.playCreatureSound('skinwalker'), 350);
+        setTimeout(() => soundEngine.playCreatureSound('witch_scream'), 700);
+
+        this.callbacks.onGameEvent('⚠️ SKINWALKER MIND SCARE!');
+        this.callbacks.onStatsChange({ ...this.stats });
+
+        setTimeout(() => {
+          this.stats.skinwalkerJumpScareActive = false;
+          this.stats.health = Math.max(1, this.stats.health - 0.5);
+          this.stats.bloodOnScreen = 0.95;
+          this.callbacks.onStatsChange({ ...this.stats });
+        }, 1800);
+      }
+
+      // --- CRYING WITCH SPECIAL LOGIC ---
+      if (creature.type === 'crying_witch') {
+        if (!creature.isEnraged) {
+          if (Math.random() < 0.02) soundEngine.playCreatureSound('witch_crying');
+
+          if (this.stats.isFlashlightOn && distToPlayer < 20) {
+            const playerDir = new THREE.Vector3();
+            this.camera.getWorldDirection(playerDir);
+            const toWitch = new THREE.Vector3().subVectors(cPos, this.playerPos).normalize();
+
+            if (playerDir.dot(toWitch) > 0.75) {
+              creature.isEnraged = true;
+              creature.state = 'chasing';
+              soundEngine.playCreatureSound('witch_scream');
+              this.callbacks.onGameEvent('THE CRYING WITCH HAS BEEN ENRAGED BY YOUR FLASHLIGHT!');
+            }
+          }
+          return;
+        }
+      }
+
+      // --- 5. CHASE & ATTACK LOGIC ---
+      if (creature.state === 'chasing' || creature.state === 'chase') {
+        if (creature.visualController) creature.visualController.playAnimation('movement', true);
+
+        const dir = new THREE.Vector3().subVectors(this.playerPos, cPos);
+        dir.y = 0;
+        dir.normalize();
+
+        cPos.addScaledVector(dir, creature.speed * delta);
+        creature.position.x = cPos.x;
+        creature.position.z = cPos.z;
+
+        creature.mesh.lookAt(this.playerPos.x, cPos.y, this.playerPos.z);
+
+        if (distToPlayer <= creature.attackRange && now - creature.lastAttackTime > creature.attackCooldown) {
+          creature.lastAttackTime = now;
+          this.performCreatureAttack(creature);
+        }
       }
     });
-  }
-
-  // --- PLAYER HEALTH SYSTEM (Mirroring Unity PlayerHealth.cs) ---
-  public takeDamage(amount: number) {
-    this.stats.health -= amount;
-    this.stats.health = THREE.MathUtils.clamp(this.stats.health, 0, this.stats.maxHealth);
-
-    // Notify screen blood system (Mirroring ScreenBloodFX.cs logic)
-    const damageRatio = amount / this.stats.maxHealth;
-    const addedAlpha = THREE.MathUtils.lerp(0.3, 0.9, damageRatio); // minAlphaOnHit=0.3, maxAlphaOnHit=0.9
-    this.stats.bloodOnScreen = Math.min(1.0, this.stats.bloodOnScreen + addedAlpha);
-
-    // Trigger low health pulse state (Handled in updatePlayerMovement via this.stats.health < 30)
-
-    if (this.stats.health <= 0) {
-      this.stats.health = 0;
-      if (this.isMultiplayer) {
-        if (!this.isDowned) {
-          this.isDowned = true;
-          this.callbacks.onGameEvent('⚠️ YOU ARE DOWNED! CRAWL TO COVER & AWAIT SQUAD REVIVE!');
-          soundEngine.playCreatureSound('witch_scream');
-          networkClient.sendPlayerUpdate({
-            isDowned: true,
-            health: 0,
-            stance: 'prone'
-          });
-        }
-      } else {
-        this.callbacks.onGameOver(false);
-        console.log("Player Defeated");
-      }
-    }
-    
-    this.callbacks.onStatsChange({ ...this.stats });
   }
 
   private performCreatureAttack(creature: Creature) {
@@ -3312,25 +2976,20 @@ export class GameEngine {
 
     // Sloth-like health depletion (takes 3 to 7 hours until all 18 hearts can go down!)
     const slothDamage = Math.min(0.04, creature.damage * 0.002);
-    this.takeDamage(slothDamage);
+    this.stats.health = Math.max(0, this.stats.health - slothDamage);
 
     if (creature.visualController) {
       creature.visualController.playAnimation('attack', false);
     }
 
     if (creature.type === 'double_tank') {
-      // Double tank crushing punch & ground slam with immense force!
+      // Double tank crushing punch!
       soundEngine.playCreatureSound('double_tank');
       soundEngine.playBloodCough();
       this.stats.coughedBlood = true;
       this.stats.bloodOnScreen = 1.0;
-      this.recoilPitch = 0.18; // violent camera jerk
-      this.camShake.set(
-        (Math.random() - 0.5) * 0.6,
-        (Math.random() - 0.5) * 0.6,
-        (Math.random() - 0.5) * 0.6
-      );
-      this.callbacks.onGameEvent('THE TANK SLAMS THE GROUND WITH IMMENSE FORCE! YOU COUGHED BLOOD!');
+      this.recoilPitch = 0.15; // violent camera jerk
+      this.callbacks.onGameEvent('DOUBLE TANK DELIVERED A CRUSHING PUNCH! YOU COUGHED BLOOD!');
     } else if (creature.type === 'jockey_9tentacles') {
       // 9-tentacle jockey green acid spit!
       soundEngine.playCreatureSound('jockey');
@@ -3376,30 +3035,12 @@ export class GameEngine {
       this.stats.bloodOnScreen = Math.min(1.0, this.stats.bloodOnScreen + 0.4);
     }
 
+    if (this.stats.health <= 0) {
+      this.stats.health = 0;
+      this.callbacks.onGameOver(false);
+    }
+
     this.callbacks.onStatsChange({ ...this.stats });
-  }
-
-  private triggerSkinwalkerJumpScare(creature: Creature) {
-    if (this.stats.skinwalkerJumpScareActive || this.skinwalkerJumpScareCooldown > 0) return;
-
-    this.stats.skinwalkerJumpScareActive = true;
-    this.skinwalkerJumpScareCooldown = 15.0; // 15s cooldown
-
-    soundEngine.playCreatureSound('witch_scream');
-    soundEngine.playCreatureSound('skinwalker');
-    setTimeout(() => soundEngine.playCreatureSound('skinwalker'), 350);
-    setTimeout(() => soundEngine.playCreatureSound('witch_scream'), 700);
-
-    this.callbacks.onGameEvent('⚠️ SKINWALKER MIND SCARE!');
-    this.callbacks.onStatsChange({ ...this.stats });
-
-    setTimeout(() => {
-      this.stats.skinwalkerJumpScareActive = false;
-      // Use takeDamage for consistent health and blood FX
-      this.takeDamage(0.5); 
-      this.stats.bloodOnScreen = Math.max(this.stats.bloodOnScreen, 0.95);
-      this.callbacks.onStatsChange({ ...this.stats });
-    }, 1800);
   }
 
   private spawnGunDrop(pos: { x: number; y: number; z: number }) {
@@ -3547,21 +3188,6 @@ export class GameEngine {
     this.container.removeEventListener('touchmove', this.onTouchMove);
     this.container.removeEventListener('touchend', this.onTouchEnd);
 
-    if (this.remotePlayerManager) {
-      this.remotePlayerManager.dispose();
-      this.remotePlayerManager = null;
-    }
-
-    if (this.katrinaCompanion) {
-      this.katrinaCompanion.dispose(this.scene);
-      this.katrinaCompanion = null;
-    }
-
-    if (this.goldenEagleVehicle) {
-      this.goldenEagleVehicle.dispose();
-      this.goldenEagleVehicle = null;
-    }
-
     if (this.renderer && this.renderer.domElement) {
       this.container.removeChild(this.renderer.domElement);
     }
@@ -3570,28 +3196,11 @@ export class GameEngine {
       this.scene.remove(drop.mesh);
     });
     this.gunDrops = [];
-  }
 
-  public interact() {
-    this.checkInteraction();
-  }
-
-  public callGoldenEagle() {
-    if (this.goldenEagleVehicle) {
-      this.goldenEagleVehicle.callGoldenEagle(this.playerPos.clone());
-    }
-  }
-
-  public triggerGoldenEagleHydraulics() {
-    if (this.goldenEagleVehicle) {
-      this.goldenEagleVehicle.triggerHydraulicBounce(performance.now() / 1000, this.creatures);
-    }
-  }
-
-  public getNearbyDownedTeammate(): { id: string; name: string } | null {
-    if (!this.isMultiplayer || !this.remotePlayerManager) return null;
-    const downed = this.remotePlayerManager.getDownedTeammateInRange(this.playerPos, 3.2);
-    if (downed) return { id: downed.id, name: downed.name };
-    return null;
+    // Clean up all remote player 3D entities
+    this.remotePlayers.forEach((p) => {
+      this.scene.remove(p.parts.group);
+    });
+    this.remotePlayers.clear();
   }
 }

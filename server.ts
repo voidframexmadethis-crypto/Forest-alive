@@ -1,370 +1,523 @@
 import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
+import type { Request, Response } from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ClientMessage, MultiplayerRoom, NetworkPlayer, ServerMessage } from './src/types/multiplayer';
-import { HumanCharacterId } from './src/game/characterMesh';
+import crypto from 'crypto';
+import { WebSocketServer, WebSocket } from 'ws';
+import type {
+  ClientToServerMessage,
+  MultiplayerPlayer,
+  MultiplayerRoom,
+  ServerToClientMessage
+} from './src/types/multiplayer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const server = http.createServer(app);
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.use(express.json());
 
-// In-memory Room State
-const rooms = new Map<string, MultiplayerRoom>();
-const clientToSession = new Map<WebSocket, { roomId: string; playerId: string }>();
+// In-memory Room & Client State
+interface ClientConnection {
+  ws: WebSocket;
+  sessionId: string;
+  roomCode: string | null;
+  playerName: string;
+  isAlive: boolean;
+}
 
+const clients = new Map<string, ClientConnection>(); // sessionId -> connection
+const wsToSession = new Map<WebSocket, string>(); // ws -> sessionId
+const rooms = new Map<string, MultiplayerRoom>();
+
+// 6-character room code generator (excludes easily confused letters/numbers: 0, O, 1, I)
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
+  const bytes = crypto.randomBytes(6);
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
   }
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
-function sendTo(ws: WebSocket, message: ServerMessage) {
+// Helper to send typed message to a specific client
+function sendToClient(ws: WebSocket, msg: ServerToClientMessage) {
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(message));
+    try {
+      ws.send(JSON.stringify(msg));
+    } catch (err) {
+      console.error('Failed to send to client:', err);
+    }
   }
 }
 
-function broadcastToRoom(roomId: string, message: ServerMessage, excludeWs?: WebSocket) {
-  const room = rooms.get(roomId);
+// Helper to broadcast to all clients in a specific room
+function broadcastToRoom(
+  roomCode: string,
+  msg: ServerToClientMessage,
+  excludeSessionId?: string
+) {
+  const room = rooms.get(roomCode);
   if (!room) return;
 
-  clientToSession.forEach((session, ws) => {
-    if (session.roomId === roomId && ws !== excludeWs) {
-      sendTo(ws, message);
+  Object.keys(room.players).forEach((sessionId) => {
+    if (excludeSessionId && sessionId === excludeSessionId) return;
+    const client = clients.get(sessionId);
+    if (client && client.ws.readyState === WebSocket.OPEN) {
+      sendToClient(client.ws, msg);
     }
   });
 }
 
-wss.on('connection', (ws: WebSocket) => {
-  ws.on('message', (raw: string) => {
+// Clean up player leaving or disconnecting from a room
+function handlePlayerLeaveRoom(sessionId: string) {
+  const client = clients.get(sessionId);
+  if (!client || !client.roomCode) return;
+
+  const roomCode = client.roomCode;
+  const room = rooms.get(roomCode);
+  client.roomCode = null;
+
+  if (!room) return;
+
+  const leavingPlayer = room.players[sessionId];
+  delete room.players[sessionId];
+
+  const remainingSessionIds = Object.keys(room.players);
+  if (remainingSessionIds.length === 0) {
+    // Room is empty, clean it up completely
+    rooms.delete(roomCode);
+    console.log(`[Multiplayer] Room ${roomCode} was deleted (empty). Active rooms: ${rooms.size}`);
+  } else {
+    // Reassign host if leaving player was host
+    let newHostId: string | undefined;
+    if (room.hostSessionId === sessionId) {
+      newHostId = remainingSessionIds[0];
+      room.hostSessionId = newHostId;
+      room.players[newHostId].isHost = true;
+      console.log(`[Multiplayer] Host of room ${roomCode} reassigned to ${room.players[newHostId].name} (${newHostId})`);
+    }
+
+    broadcastToRoom(roomCode, {
+      type: 'player_left',
+      sessionId,
+      newHostId
+    });
+
+    broadcastToRoom(roomCode, {
+      type: 'room_update',
+      room
+    });
+  }
+}
+
+// WebSocket Server initialization
+const wss = new WebSocketServer({ noServer: true });
+
+wss.on('connection', (ws: WebSocket, request) => {
+  const sessionId = 'session_' + crypto.randomUUID().slice(0, 8);
+  const client: ClientConnection = {
+    ws,
+    sessionId,
+    roomCode: null,
+    playerName: 'Survivor',
+    isAlive: true
+  };
+
+  clients.set(sessionId, client);
+  wsToSession.set(ws, sessionId);
+
+  console.log(`[Multiplayer] Client connected: ${sessionId} (Total online: ${clients.size})`);
+
+  // Send connection ack with their unique session identifier
+  sendToClient(ws, {
+    type: 'connected',
+    sessionId
+  });
+
+  ws.on('pong', () => {
+    client.isAlive = true;
+  });
+
+  ws.on('message', (data: string | Buffer) => {
     try {
-      const msg: ClientMessage = JSON.parse(raw.toString());
+      const msg: ClientToServerMessage = JSON.parse(data.toString());
 
-      if (msg.type === 'ping') {
-        sendTo(ws, { type: 'pong', timestamp: msg.timestamp });
-        return;
-      }
-
-      if (msg.type === 'create_room') {
-        const code = generateRoomCode();
-        const playerId = 'player_' + Math.random().toString(36).substring(2, 9);
-        const hostPlayer: NetworkPlayer = {
-          id: playerId,
-          name: msg.name || 'Survivor 1',
-          characterId: msg.characterId || 'titan',
-          isReady: false,
-          isHost: true,
-          ping: 0,
-          position: { x: 0, y: 1.7, z: 0 },
-          rotation: { yaw: 0, pitch: 0, roll: 0 },
-          stance: 'standing',
-          isAiming: false,
-          isShooting: false,
-          isReloading: false,
-          weaponId: 'm4a1',
-          health: 100,
-          maxHealth: 100,
-          isDowned: false,
-          isDead: false,
-          kills: 0
-        };
-
-        const newRoom: MultiplayerRoom = {
-          code,
-          hostId: playerId,
-          maxPlayers: 5,
-          mode: msg.mode || 'blood_harvest',
-          forestType: msg.forestType || 'pine_dark',
-          difficulty: msg.difficulty || 'realism',
-          status: 'lobby',
-          players: { [playerId]: hostPlayer },
-          createdAt: Date.now(),
-          successionEventComplete: false,
-          completedMissions: 0,
-          currentMission: 1,
-          isCampaignComplete: false,
-          natashaSkillLevel: 0
-        };
-
-        rooms.set(code, newRoom);
-        clientToSession.set(ws, { roomId: code, playerId });
-
-        sendTo(ws, { type: 'room_created', room: newRoom, playerId });
-        return;
-      }
-
-      if (msg.type === 'join_room') {
-        const cleanCode = msg.code.trim().toUpperCase();
-        const room = rooms.get(cleanCode);
-
-        if (!room) {
-          sendTo(ws, { type: 'error', message: `Room ${cleanCode} not found.` });
-          return;
-        }
-
-        const currentCount = Object.keys(room.players).length;
-        if (currentCount >= room.maxPlayers) {
-          sendTo(ws, { type: 'error', message: `Room ${cleanCode} is full (maximum 5 survivors).` });
-          return;
-        }
-
-        if (room.status !== 'lobby') {
-          sendTo(ws, { type: 'error', message: `Mission in progress in room ${cleanCode}. Cannot join.` });
-          return;
-        }
-
-        // Determine available character
-        const availableCharacters: HumanCharacterId[] = ['titan', 'katrina', 'natasha', 'bill', 'luis'];
-        const takenCharacters = new Set(Object.values(room.players).map((p) => p.characterId));
-        let chosenCharacter: HumanCharacterId | null = null;
-
-        if (msg.characterId && !takenCharacters.has(msg.characterId)) {
-          chosenCharacter = msg.characterId;
-        } else {
-          chosenCharacter = availableCharacters.find((c) => !takenCharacters.has(c)) || null;
-        }
-
-        const playerId = 'player_' + Math.random().toString(36).substring(2, 9);
-        const newPlayer: NetworkPlayer = {
-          id: playerId,
-          name: msg.name || `Survivor ${currentCount + 1}`,
-          characterId: chosenCharacter,
-          isReady: false,
-          isHost: false,
-          ping: 0,
-          position: { x: (currentCount - 2) * 2, y: 1.7, z: 0 },
-          rotation: { yaw: 0, pitch: 0, roll: 0 },
-          stance: 'standing',
-          isAiming: false,
-          isShooting: false,
-          isReloading: false,
-          weaponId: 'm4a1',
-          health: 100,
-          maxHealth: 100,
-          isDowned: false,
-          isDead: false,
-          kills: 0
-        };
-
-        room.players[playerId] = newPlayer;
-        clientToSession.set(ws, { roomId: cleanCode, playerId });
-
-        sendTo(ws, { type: 'room_joined', room, playerId });
-        broadcastToRoom(cleanCode, { type: 'room_update', room }, ws);
-        return;
-      }
-
-      // Remaining messages require an active session
-      const session = clientToSession.get(ws);
-      if (!session) return;
-
-      const room = rooms.get(session.roomId);
-      if (!room) return;
-
-      const player = room.players[session.playerId];
-      if (!player) return;
-
-      if (msg.type === 'select_character') {
-        const targetChar = msg.characterId;
-        // Verify character uniqueness across room
-        const isTaken = Object.entries(room.players).some(
-          ([pId, p]) => pId !== session.playerId && p.characterId === targetChar
-        );
-
-        if (isTaken) {
-          sendTo(ws, { type: 'error', message: 'That character is already selected by another survivor!' });
-          return;
-        }
-
-        player.characterId = targetChar;
-        broadcastToRoom(session.roomId, { type: 'room_update', room });
-        return;
-      }
-
-      if (msg.type === 'toggle_ready') {
-        player.isReady = msg.isReady;
-        broadcastToRoom(session.roomId, { type: 'room_update', room });
-        return;
-      }
-
-      if (msg.type === 'start_game') {
-        if (!player.isHost) {
-          sendTo(ws, { type: 'error', message: 'Only the room host can launch the cooperative mission.' });
-          return;
-        }
-
-        // Verify all players have selected a character
-        const allHaveCharacter = Object.values(room.players).every((p) => p.characterId !== null);
-        if (!allHaveCharacter) {
-          sendTo(ws, { type: 'error', message: 'All survivors must select a character before deployment.' });
-          return;
-        }
-
-        room.status = 'in_game';
-        broadcastToRoom(session.roomId, { type: 'game_started', room });
-        return;
-      }
-
-      if (msg.type === 'player_update') {
-        Object.assign(player, msg.data);
-        broadcastToRoom(session.roomId, {
-          type: 'player_update',
-          playerId: session.playerId,
-          data: msg.data
-        }, ws);
-        return;
-      }
-
-      if (msg.type === 'shoot_bullet') {
-        broadcastToRoom(session.roomId, {
-          type: 'bullet_fired',
-          playerId: session.playerId,
-          origin: msg.origin,
-          direction: msg.direction,
-          weaponId: msg.weaponId,
-          hitPoint: msg.hitPoint
-        }, ws);
-        return;
-      }
-
-      if (msg.type === 'sync_creatures') {
-        // Broadcast authoritative creature states from host to all other clients
-        if (player.isHost) {
-          broadcastToRoom(session.roomId, {
-            type: 'creatures_synced',
-            creatures: msg.creatures
-          }, ws);
-        }
-        return;
-      }
-
-      if (msg.type === 'creature_damage') {
-        broadcastToRoom(session.roomId, {
-          type: 'creature_damage',
-          playerId: session.playerId,
-          creatureId: msg.creatureId,
-          damage: msg.damage,
-          hitLocation: msg.hitLocation
-        }, ws);
-        return;
-      }
-
-      if (msg.type === 'story_event_trigger') {
-        if (msg.event === 'katrina_labor') {
-          room.successionEventComplete = true;
-          broadcastToRoom(session.roomId, { type: 'story_event_triggered', event: 'katrina_labor' });
-          broadcastToRoom(session.roomId, { type: 'room_update', room });
-        }
-        return;
-      }
-
-      if (msg.type === 'complete_mission') {
-        room.completedMissions += 1;
-        room.currentMission += 1;
-        room.natashaSkillLevel = Math.min(5, room.completedMissions);
-        
-        // Trigger labor if progress reaches threshold (5 missions)
-        if (room.completedMissions >= 5 && !room.successionEventComplete) {
-          broadcastToRoom(session.roomId, { type: 'story_event_triggered', event: 'katrina_labor' });
-          room.successionEventComplete = true;
-        }
-
-        // Campaign completion (total missions: 5 standard + 3 final = 8)
-        if (room.completedMissions >= 8) {
-          room.isCampaignComplete = true;
-          broadcastToRoom(session.roomId, { type: 'story_event_triggered', event: 'campaign_complete' });
-        }
-        
-        broadcastToRoom(session.roomId, { type: 'room_update', room });
-        return;
-      }
-
-      if (msg.type === 'revive_player') {
-        const target = room.players[msg.targetPlayerId];
-        if (target && target.isDowned) {
-          target.isDowned = false;
-          target.health = 50; // Revived with 50 health
-          broadcastToRoom(session.roomId, {
-            type: 'player_revived',
-            reviverId: session.playerId,
-            targetId: msg.targetPlayerId
+      switch (msg.type) {
+        case 'ping': {
+          sendToClient(ws, {
+            type: 'pong',
+            timestamp: msg.timestamp
           });
-          broadcastToRoom(session.roomId, { type: 'room_update', room });
+          break;
         }
-        return;
-      }
 
-      if (msg.type === 'leave_room') {
-        handleDisconnect(ws);
-      }
+        case 'create_room': {
+          // If already in a room, leave it first
+          if (client.roomCode) {
+            handlePlayerLeaveRoom(sessionId);
+          }
 
+          const roomCode = generateRoomCode();
+          client.playerName = msg.playerName.trim() || 'Survivor';
+          client.roomCode = roomCode;
+
+          const newPlayer: MultiplayerPlayer = {
+            sessionId,
+            name: client.playerName,
+            characterId: msg.characterId || 'titan',
+            isHost: true,
+            ping: 0,
+            pos: { x: 0, y: 0, z: 0 },
+            yaw: 0,
+            pitch: 0,
+            stance: 'standing',
+            isSprinting: false,
+            currentWeapon: 'm4a1',
+            health: 100,
+            maxHealth: 100,
+            lastUpdate: Date.now()
+          };
+
+          const room: MultiplayerRoom = {
+            roomCode,
+            hostSessionId: sessionId,
+            players: { [sessionId]: newPlayer },
+            mode: msg.mode || 'blood_harvest',
+            forestType: msg.forestType || 'pine_dark',
+            difficulty: msg.difficulty || 'realism',
+            status: 'lobby',
+            createdAt: Date.now()
+          };
+
+          rooms.set(roomCode, room);
+
+          console.log(`[Multiplayer] Room created: ${roomCode} by ${client.playerName} (${sessionId}). Active rooms: ${rooms.size}`);
+
+          sendToClient(ws, {
+            type: 'room_created',
+            room,
+            sessionId
+          });
+          break;
+        }
+
+        case 'join_room': {
+          const code = (msg.roomCode || '').toUpperCase().trim();
+          if (!code || code.length !== 6) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'INVALID_CODE',
+              message: 'Invalid room code format. Must be a 6-character code.'
+            });
+            return;
+          }
+
+          const room = rooms.get(code);
+          if (!room) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'ROOM_NOT_FOUND',
+              message: `Room "${code}" not found. Verify the code or create a new room.`
+            });
+            return;
+          }
+
+          // Check max capacity (4 players max)
+          const currentCount = Object.keys(room.players).length;
+          if (currentCount >= 4) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'ROOM_FULL',
+              message: `Room "${code}" is already full (4/4 players).`
+            });
+            return;
+          }
+
+          // Check if game already in progress
+          if (room.status === 'playing') {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'GAME_IN_PROGRESS',
+              message: `Room "${code}" has already deployed into combat.`
+            });
+            return;
+          }
+
+          // If already in another room, leave first
+          if (client.roomCode && client.roomCode !== code) {
+            handlePlayerLeaveRoom(sessionId);
+          }
+
+          client.playerName = msg.playerName.trim() || `Survivor #${currentCount + 1}`;
+          client.roomCode = code;
+
+          const joinedPlayer: MultiplayerPlayer = {
+            sessionId,
+            name: client.playerName,
+            characterId: msg.characterId || 'katrina',
+            isHost: false,
+            ping: 0,
+            pos: { x: currentCount * 2.5 - 2, y: 0, z: 0 },
+            yaw: 0,
+            pitch: 0,
+            stance: 'standing',
+            isSprinting: false,
+            currentWeapon: 'm4a1',
+            health: 100,
+            maxHealth: 100,
+            lastUpdate: Date.now()
+          };
+
+          room.players[sessionId] = joinedPlayer;
+
+          console.log(`[Multiplayer] Player ${client.playerName} (${sessionId}) joined room ${code}. Total players: ${Object.keys(room.players).length}`);
+
+          // Notify joined client with full room state
+          sendToClient(ws, {
+            type: 'room_joined',
+            room,
+            sessionId
+          });
+
+          // Notify other players in the room
+          broadcastToRoom(code, {
+            type: 'player_joined',
+            player: joinedPlayer
+          }, sessionId);
+
+          broadcastToRoom(code, {
+            type: 'room_update',
+            room
+          });
+          break;
+        }
+
+        case 'leave_room': {
+          handlePlayerLeaveRoom(sessionId);
+          break;
+        }
+
+        case 'start_game': {
+          if (!client.roomCode) return;
+          const room = rooms.get(client.roomCode);
+          if (!room) return;
+
+          // Only host can start game
+          if (room.hostSessionId !== sessionId) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'NOT_HOST',
+              message: 'Only the room host can launch the game.'
+            });
+            return;
+          }
+
+          room.status = 'playing';
+          console.log(`[Multiplayer] Room ${room.roomCode} launched game!`);
+
+          broadcastToRoom(room.roomCode, {
+            type: 'game_started',
+            room
+          });
+          break;
+        }
+
+        case 'player_update': {
+          if (!client.roomCode) return;
+          const room = rooms.get(client.roomCode);
+          if (!room) return;
+
+          const player = room.players[sessionId];
+          if (!player) return;
+
+          player.pos = msg.pos;
+          player.yaw = msg.yaw;
+          player.pitch = msg.pitch;
+          player.stance = msg.stance;
+          player.isSprinting = msg.isSprinting;
+          player.currentWeapon = msg.currentWeapon;
+          player.health = msg.health;
+          player.lastUpdate = Date.now();
+          break;
+        }
+
+        case 'player_shoot': {
+          if (!client.roomCode) return;
+          const room = rooms.get(client.roomCode);
+          if (!room) return;
+
+          // Broadcast shooting event and tracer to all other players in the room
+          broadcastToRoom(
+            client.roomCode,
+            {
+              type: 'remote_shoot',
+              sessionId,
+              playerName: client.playerName,
+              origin: msg.origin,
+              direction: msg.direction,
+              weaponId: msg.weaponId,
+              hitPoint: msg.hitPoint
+            },
+            sessionId
+          );
+          break;
+        }
+
+        case 'creature_damage': {
+          if (!client.roomCode) return;
+          const room = rooms.get(client.roomCode);
+          if (!room) return;
+
+          // Broadcast synchronized creature damage event
+          broadcastToRoom(client.roomCode, {
+            type: 'creature_damaged',
+            creatureId: msg.creatureId,
+            damage: msg.damage,
+            attackerSessionId: sessionId,
+            attackerName: client.playerName,
+            isHeadshot: msg.isHeadshot
+          });
+          break;
+        }
+
+        case 'chat': {
+          if (!client.roomCode) return;
+          const text = (msg.text || '').trim();
+          if (!text) return;
+
+          broadcastToRoom(client.roomCode, {
+            type: 'chat_broadcast',
+            senderName: client.playerName,
+            text,
+            timestamp: Date.now()
+          });
+          break;
+        }
+      }
     } catch (err) {
-      console.error('Error handling WebSocket message:', err);
+      console.error(`[Multiplayer] Error processing message from ${sessionId}:`, err);
     }
   });
 
   ws.on('close', () => {
-    handleDisconnect(ws);
+    console.log(`[Multiplayer] Client disconnected: ${sessionId}`);
+    handlePlayerLeaveRoom(sessionId);
+    clients.delete(sessionId);
+    wsToSession.delete(ws);
+  });
+
+  ws.on('error', (err) => {
+    console.error(`[Multiplayer] WebSocket error for ${sessionId}:`, err);
   });
 });
 
-function handleDisconnect(ws: WebSocket) {
-  const session = clientToSession.get(ws);
-  if (!session) return;
+// Upgrade handling for HTTP -> WS connection
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+  const pathname = url.pathname;
 
-  clientToSession.delete(ws);
-  const room = rooms.get(session.roomId);
-  if (!room) return;
-
-  delete room.players[session.playerId];
-  const remainingPlayers = Object.keys(room.players);
-
-  if (remainingPlayers.length === 0) {
-    rooms.delete(session.roomId);
-  } else {
-    // Reassign host if the host disconnected
-    if (room.hostId === session.playerId) {
-      room.hostId = remainingPlayers[0];
-      room.players[remainingPlayers[0]].isHost = true;
-    }
-    broadcastToRoom(session.roomId, { type: 'room_update', room });
+  // Ignore Vite's internal HMR web socket protocol if present
+  if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
+    return;
   }
-}
 
-// REST endpoints for health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', activeRooms: rooms.size });
+  // Accept connections to /ws or root /
+  if (pathname === '/ws' || pathname === '/ws/' || pathname === '/') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  }
 });
 
-async function start() {
-  if (process.env.NODE_ENV !== 'production') {
+// Periodic 20 Hz synchronization tick for player positions (50ms)
+setInterval(() => {
+  rooms.forEach((room) => {
+    if (room.status === 'playing') {
+      const playerCount = Object.keys(room.players).length;
+      if (playerCount > 1) {
+        broadcastToRoom(room.roomCode, {
+          type: 'players_sync',
+          players: room.players
+        });
+      }
+    }
+  });
+}, 50);
+
+// Heartbeat interval to prune dead connections (every 15s)
+setInterval(() => {
+  clients.forEach((client, sessionId) => {
+    if (!client.isAlive) {
+      console.log(`[Multiplayer] Terminating inactive socket: ${sessionId}`);
+      client.ws.terminate();
+      handlePlayerLeaveRoom(sessionId);
+      clients.delete(sessionId);
+      wsToSession.delete(client.ws);
+      return;
+    }
+    client.isAlive = false;
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.ping();
+    }
+  });
+}, 15000);
+
+// REST API Endpoints
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    game: 'FOREST ALIVE',
+    multiplayer: true,
+    totalOnline: clients.size,
+    activeRooms: rooms.size,
+    timestamp: Date.now()
+  });
+});
+
+app.get('/api/multiplayer/rooms', (req: Request, res: Response) => {
+  const publicRooms = Array.from(rooms.values()).map((r) => ({
+    roomCode: r.roomCode,
+    playerCount: Object.keys(r.players).length,
+    mode: r.mode,
+    forestType: r.forestType,
+    status: r.status,
+    createdAt: r.createdAt
+  }));
+  res.json({ rooms: publicRooms });
+});
+
+// Serve frontend assets based on environment
+async function setupFrontend() {
+  if (process.env.NODE_ENV === 'production') {
+    const distPath = path.resolve(__dirname, 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req: Request, res: Response) => {
+      res.sendFile(path.resolve(distPath, 'index.html'));
+    });
+  } else {
+    // Development mode: attach Vite middleware
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
     });
     app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
   }
-
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  server.listen(port, '0.0.0.0', () => {
-    console.log(`[Forest Alive Server] Running on http://0.0.0.0:${port} with Real-Time Multiplayer WebSockets`);
-  });
 }
 
-start();
+setupFrontend().then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`===================================================`);
+    console.log(`  🌲 FOREST ALIVE MULTIPLAYER SERVER ONLINE`);
+    console.log(`  Port: ${PORT}`);
+    console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`  WebSocket Endpoint: /ws`);
+    console.log(`===================================================`);
+  });
+});
